@@ -1,0 +1,59 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/api-gateway:$COMMIT_SHA
+      - backend/services/nodejs/api-gateway
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/auth-service:$COMMIT_SHA
+      - backend/services/nodejs/auth-service
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/pet-service:$COMMIT_SHA
+      - backend/services/nodejs/pet-service
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/clinic-service:$COMMIT_SHA
+      - backend/services/nodejs/clinic-service
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/notification-service:$COMMIT_SHA
+      - backend/services/nodejs/notification-service
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/vaccination-service:$COMMIT_SHA
+      - backend/services/nodejs/vaccination-service
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/ai-service:$COMMIT_SHA
+      - backend/services/python/ai-service
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/agent-service:$COMMIT_SHA
+      - backend/services/python/agent-service
+
+images:
+  - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/api-gateway:$COMMIT_SHA
+  - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/auth-service:$COMMIT_SHA
+  - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/pet-service:$COMMIT_SHA
+  - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/clinic-service:$COMMIT_SHA
+  - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/notification-service:$COMMIT_SHA
+  - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/vaccination-service:$COMMIT_SHA
+  - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/ai-service:$COMMIT_SHA
+  - asia-southeast1-docker.pkg.dev/$PROJECT_ID/companion-ai/agent-service:$COMMIT_SHA

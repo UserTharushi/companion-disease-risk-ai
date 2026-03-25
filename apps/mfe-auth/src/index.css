@@ -1,0 +1,73 @@
+﻿@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    min-height: 100%;
+  }
+
+  html {
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900;
+    font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button, a {
+    touch-action: manipulation;
+  }
+}
+
+@layer components {
+  .pwa-title {
+    @apply text-[32px] font-extrabold tracking-tight text-slate-900;
+  }
+
+  .pwa-subtitle {
+    @apply text-[16px] leading-7 text-slate-500;
+  }
+
+  .pwa-card {
+    @apply rounded-[28px] border border-slate-200 bg-white shadow-sm;
+  }
+
+  .auth-phone {
+    @apply w-full max-w-sm mx-auto bg-white overflow-hidden;
+    min-height: 100dvh;
+    box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
+  }
+
+  .auth-card {
+    @apply rounded-3xl border border-slate-200 bg-white;
+    box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
+  }
+
+  .auth-input {
+    @apply w-full rounded-2xl border border-slate-200 px-4 py-3 text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100;
+  }
+
+  .auth-label {
+    @apply mb-2 block text-sm font-semibold text-slate-700;
+  }
+
+  .auth-primary-btn {
+    @apply w-full rounded-[22px] bg-blue-600 py-4 text-lg font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60;
+  }
+
+  .auth-secondary-btn {
+    @apply w-full rounded-2xl border border-slate-200 bg-white py-3.5 font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60;
+  }
+}

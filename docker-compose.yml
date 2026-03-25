@@ -1,0 +1,146 @@
+version: "3.9"
+
+networks:
+  companion-net:
+    driver: bridge
+
+volumes:
+  neo4j_data:
+  mongo_data:
+
+services:
+  # ── Frontend Shell ─────────────────────────
+  shell:
+    build:
+      context: ./apps/shell
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    networks:
+      - companion-net
+    env_file: .env
+    depends_on:
+      - api-gateway
+
+  # ── API Gateway ────────────────────────────
+  api-gateway:
+    build:
+      context: ./backend/services/nodejs/api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    networks:
+      - companion-net
+    env_file: .env
+    depends_on:
+      - auth-service
+      - pet-service
+      - clinic-service
+      - notification-service
+      - vaccination-service
+
+  # ── Auth Service ───────────────────────────
+  auth-service:
+    build:
+      context: ./backend/services/nodejs/auth-service
+      dockerfile: Dockerfile
+    ports:
+      - "4001:4001"
+    networks:
+      - companion-net
+    env_file: .env
+
+  # ── Pet Service ────────────────────────────
+  pet-service:
+    build:
+      context: ./backend/services/nodejs/pet-service
+      dockerfile: Dockerfile
+    ports:
+      - "4002:4002"
+    networks:
+      - companion-net
+    env_file: .env
+
+  # ── Clinic Service ─────────────────────────
+  clinic-service:
+    build:
+      context: ./backend/services/nodejs/clinic-service
+      dockerfile: Dockerfile
+    ports:
+      - "4003:4003"
+    networks:
+      - companion-net
+    env_file: .env
+
+  # ── Notification Service ───────────────────
+  notification-service:
+    build:
+      context: ./backend/services/nodejs/notification-service
+      dockerfile: Dockerfile
+    ports:
+      - "4004:4004"
+    networks:
+      - companion-net
+    env_file: .env
+
+  # ── Vaccination Service ────────────────────
+  vaccination-service:
+    build:
+      context: ./backend/services/nodejs/vaccination-service
+      dockerfile: Dockerfile
+    ports:
+      - "4005:4005"
+    networks:
+      - companion-net
+    env_file: .env
+
+  # ── AI Service (Python FastAPI) ────────────
+  ai-service:
+    build:
+      context: ./backend/services/python/ai-service
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    networks:
+      - companion-net
+    env_file: .env
+
+  # ── Agent Service (Python / LangGraph) ─────
+  agent-service:
+    build:
+      context: ./backend/services/python/agent-service
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    networks:
+      - companion-net
+    env_file: .env
+
+  # ── Neo4j (Ontology) ───────────────────────
+  neo4j:
+    image: neo4j:5.18-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/your-neo4j-password
+      - NEO4J_PLUGINS=["apoc", "graph-data-science"]
+    volumes:
+      - neo4j_data:/data
+      - ./ontology/neo4j/seed:/var/lib/neo4j/import
+    networks:
+      - companion-net
+
+  # ── MongoDB (local dev mirror) ─────────────
+  mongodb:
+    image: mongo:7.0
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+      MONGO_INITDB_DATABASE: companion_ai
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - companion-net

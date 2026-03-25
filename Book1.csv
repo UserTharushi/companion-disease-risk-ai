@@ -1,0 +1,100 @@
+,Product Backlog,,
+,Epic,Features,Userstories
+1,User Authentication & Account Management,Welcome & Onboarding Screens,1. Display welcome screen on first app launch
+,,,2. Provide system overview and disclaimer before account creation
+,,User Registration,3. Allow new users to register using email and password
+,,,4. Validate email format and enforce password strength rules
+,,,5. Allow users to register using Google authentication
+,,Secure Login,6. Provide secure login screen for registered users
+,,,7. Enable login using email and password
+,,,8. Allow biometric authentication (if supported)
+,,,9. Display error messages for invalid login attempts
+,,Password & Account Recovery,10. Allow users to reset forgotten passwords via email link
+,,,11. Provide secure password update functionality
+,,Multi-Factor Authentication,12. Provide option to enable Multi-Factor Authentication
+,,,13. Enable MFA via email or SMS verification
+,,,14. Enable MFA via authenticator app (TOTP)
+2,Pet Profile Management,Pet Registration,15. Allow users to create multiple pet profiles.
+,,,"16. Capture pet details: Name, Age, Breed, Weight"
+,,,17. Upload pet image.
+,,Pet Health Records,18. Store vaccination history.
+,,,19. Store previous disease history.
+,,,20. Store previous AI prediction records.
+,,,21. Allow editing of pet details.
+,,Pet History Dashboard,22. Display complete health timeline
+,,,23. Show past symptoms and risk levels.
+,,,24. Show past vet visits.
+3,Symptom Input & Chatbot Interaction,Structured Symptom Form,25. Provide symptom selection list.
+,,,26. Allow manual symptom entry.
+,,,27. Validate symptom input.
+,,,28. Submit symptoms for prediction.
+,,AI Chatbot,29. Allow symptom input via chatbot.
+,,,30. Convert natural language to structured symptom data.
+,,,31. Store chatbot conversation history.
+,,,32. Display AI explanation of suspected disease.
+,,Symptom Data Storage,33. Save symptoms to Firestore.
+,,,34. Link symptoms to specific pet profile.
+,,,35. Timestamp each prediction request.
+4,Machine Learning Disease Prediction,Risk Prediction Engine,36. Send symptom data to FastAPI ML service.
+,,,37. Predict disease category
+,,,"38. Classify risk level (Low, Medium, High)."
+,,,39. Provide prediction confidence score.
+,,Risk Level Logic,40. If Low Risk -> Recommend home monitoring.
+,,,41. If Medium Risk -> Recommend vet visit within 48 hours.
+,,,42. If High Risk -> Recommend vet visit within 24 hours (Emergency).
+,,Store Prediction Results,43. Store ML prediction in Firestore.
+,,,44. Attach prediction to pet health history.
+5,Agentic AI Recommendation Layer,Recommendation Agent,45. Use LangGraph to analyze prediction + pet history.
+,,,46. Generate personalized care advice.
+,,,47. Provide explainable reasoning summary.
+,,Veterinary Recommendation Agent,48. Trigger clinic recommendation when risk is Medium or High.
+,,,49. Identify required specialist type.
+,,,50. Rank clinics based on urgency & distance.
+,, Vaccination Recommendation Agent,51. Cross-check disease with vaccination database.
+,,,52. Identify missing vaccines.
+,,,53. Recommend vaccination schedule.
+6,Veterinary Discovery & Booking,Location Access,54. Request user geolocation permission.
+,,,55. Fetch nearby clinics using Google Maps API.
+,,Clinic Management,56. Display nearby veterinary clinics.
+,,,57. Show clinic ratings and specialization.
+,,,58. Show available surgeons.
+,,Appointment Scheduling,59. Display available time slots.
+,,,60. Allow user to book appointment.
+,,,61. Save booking to Firestore.
+,,,62. Send confirmation notification.
+7,Vaccination Management,Vaccination Records,63. Allow users to record completed vaccinations.
+,,,64. Store next due date.
+,,Vaccination Reminder System,65. Automatically calculate next vaccination date.
+,,,66. Send push notifications for due vaccines.
+,,,67. Alert users if vaccine-preventable disease risk detected.
+8,Notifications & Alerts,Risk Alerts,68. Send emergency notification for high-risk cases.
+,,,69. Notify user of recommended vet visit urgency.
+,,Appointment Notification,70. Send booking confirmation.
+,,,71. Send appointment reminders.
+,,Follow-Up Reminders,72. Remind users to monitor symptoms.
+,,,73. Remind users for follow-up vet visit.
+9,Admin & Data Management,Clinic Management,74. Allow admin to add clinics
+,,,75. Manage Surgeons Details
+,,,76. Manage Clinic availability schedule
+,,Disease & Vaccine Database,77. Maintain disease metadata
+,,,78. Maintain vaccine mapping data
+,,Monitoring & Analytics,79. Track prediction statistics
+,,,80. Monitor system performance
+,,,81. View user activity logs
+10,System Quality & Security,Security,82. encrypt data in transit
+,,,83. Implement Firestore security rules
+,,,84. Role-based access control
+,,Performance,85. Ensure prediction response time < 5 seconds
+,,,86. Optimize clinic search queries
+,,Scalability,87. Support horizontal scaling of backend
+,,,88. Enable AI model updates without downtime
+11,User Feedback & Continuous Learning,Prediction Feedback,89. Allow users to rate prediction accuracy (Helpful / Not Helpful).
+,,,90. Allow users to confirm if actual vet diagnosis matched prediction.
+,,,91. Collect optional user comments on prediction.
+,,,92. Store feedback linked to prediction record
+,,Clinic & Surgeon Feedback,93. Allow users to rate veterinary clinic.
+,,,94. Allow rating for individual surgeon
+,,,95. Allow written review submission
+,,,96. Display average rating in clinic listing
+,,,
+,,,
