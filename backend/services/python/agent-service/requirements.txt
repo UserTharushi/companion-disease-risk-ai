@@ -1,0 +1,9 @@
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.4
+langchain==0.2.7
+langgraph==0.1.9
+langsmith==0.1.83
+neo4j==5.22.0
+google-cloud-aiplatform==1.57.0
+python-dotenv==1.0.1

@@ -1,0 +1,181 @@
+@import url("https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito+Sans:opsz,wght@6..12,400;6..12,500;6..12,600;6..12,700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --color-surface: 255 255 255;
+    --color-surface-secondary: 244 248 255;
+    --color-surface-tertiary: 234 242 255;
+    --color-surface-invert: 15 23 42;
+    --color-border: 215 227 247;
+    --color-border-subtle: 232 239 251;
+    --color-border-strong: 184 200 230;
+    --color-accent: 27 40 69;
+    --color-accent-muted: 57 79 116;
+    --color-accent-subtle: 95 120 159;
+    --color-accent-faint: 140 161 194;
+    --color-primary: 47 99 230;
+    --color-primary-hover: 37 86 216;
+    --color-primary-fg: 255 255 255;
+    --color-info: 59 130 246;
+    --color-info-light: 234 242 255;
+    --color-info-fg: 29 78 216;
+    --color-success: 16 185 129;
+    --color-success-light: 233 251 244;
+    --color-success-fg: 4 120 87;
+    --color-warning: 245 158 11;
+    --color-warning-light: 255 247 230;
+    --color-warning-fg: 180 83 9;
+    --color-danger: 239 68 68;
+    --color-danger-light: 255 241 242;
+    --color-danger-fg: 185 28 28;
+  }
+
+  html.dark {
+    --color-surface: 17 26 43;
+    --color-surface-secondary: 20 31 50;
+    --color-surface-tertiary: 29 41 66;
+    --color-surface-invert: 244 248 255;
+    --color-border: 42 60 89;
+    --color-border-subtle: 34 48 72;
+    --color-border-strong: 62 83 118;
+    --color-accent: 222 235 234;
+    --color-accent-muted: 182 197 219;
+    --color-accent-subtle: 143 163 198;
+    --color-accent-faint: 110 131 167;
+    --color-primary: 122 163 255;
+    --color-primary-hover: 94 139 252;
+    --color-primary-fg: 9 14 28;
+    --color-info: 96 165 250;
+    --color-info-light: 22 40 76;
+    --color-info-fg: 191 219 254;
+    --color-success: 52 211 153;
+    --color-success-light: 16 48 37;
+    --color-success-fg: 167 243 208;
+    --color-warning: 251 191 36;
+    --color-warning-light: 54 37 10;
+    --color-warning-fg: 253 230 138;
+    --color-danger: 248 113 113;
+    --color-danger-light: 59 20 24;
+    --color-danger-fg: 254 202 202;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    font-family: "Nunito Sans", "Segoe UI", sans-serif;
+    color: rgb(var(--color-accent));
+    background:
+      radial-gradient(circle at 14% 10%, rgba(90, 169, 255, 0.24) 0, rgba(90, 169, 255, 0) 48%),
+      radial-gradient(circle at 92% 8%, rgba(255, 138, 91, 0.22) 0, rgba(255, 138, 91, 0) 42%),
+      rgb(var(--color-surface-secondary));
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1, h2, h3 {
+    font-family: "Baloo 2", "Nunito Sans", "Segoe UI", sans-serif;
+    letter-spacing: 0.01em;
+  }
+
+  .dark body,
+  html.dark body {
+    color: rgb(var(--color-accent));
+    background:
+      radial-gradient(circle at 16% 10%, rgba(14, 165, 162, 0.22) 0, rgba(14, 165, 162, 0) 48%),
+      radial-gradient(circle at 84% 6%, rgba(111, 124, 255, 0.16) 0, rgba(111, 124, 255, 0) 38%),
+      rgb(var(--color-surface));
+  }
+
+  ::selection {
+    background: #0ea5a2;
+    color: #ffffff;
+  }
+
+  .dark ::selection {
+    background: #ff8a5b;
+    color: #171f33;
+  }
+
+  button, a { touch-action: manipulation; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #b9d1cd; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #8eb4ae; }
+
+  .dark ::-webkit-scrollbar-thumb { background: #2b4b50; }
+  .dark ::-webkit-scrollbar-thumb:hover { background: #3a6065; }
+}
+
+/* Semantic color utilities used throughout the auth app. These override the
+   compiled Tailwind colors so theme changes are visible immediately at runtime. */
+.bg-surface { background-color: rgb(var(--color-surface)) !important; }
+.bg-surface-secondary { background-color: rgb(var(--color-surface-secondary)) !important; }
+.bg-surface-tertiary { background-color: rgb(var(--color-surface-tertiary)) !important; }
+.bg-surface-invert { background-color: rgb(var(--color-surface-invert)) !important; }
+
+.text-accent { color: rgb(var(--color-accent)) !important; }
+.text-accent-muted { color: rgb(var(--color-accent-muted)) !important; }
+.text-accent-subtle { color: rgb(var(--color-accent-subtle)) !important; }
+.text-accent-faint { color: rgb(var(--color-accent-faint)) !important; }
+
+.border-border { border-color: rgb(var(--color-border)) !important; }
+.border-border-subtle { border-color: rgb(var(--color-border-subtle)) !important; }
+.border-border-strong { border-color: rgb(var(--color-border-strong)) !important; }
+
+.bg-primary { background-color: rgb(var(--color-primary)) !important; }
+.bg-primary-hover { background-color: rgb(var(--color-primary-hover)) !important; }
+.text-primary { color: rgb(var(--color-primary)) !important; }
+.text-primary-fg { color: rgb(var(--color-primary-fg)) !important; }
+.bg-primary-700 { background-color: rgb(29, 78, 216) !important; }
+.bg-primary-600 { background-color: rgb(37, 99, 235) !important; }
+.bg-primary-500 { background-color: rgb(59, 130, 246) !important; }
+.bg-primary-100 { background-color: rgb(219, 234, 254) !important; }
+.bg-primary-50 { background-color: rgb(239, 246, 255) !important; }
+.text-primary-700 { color: rgb(29, 78, 216) !important; }
+.text-primary-600 { color: rgb(37, 99, 235) !important; }
+.border-primary-700 { border-color: rgb(29, 78, 216) !important; }
+
+.dark .dark\:bg-primary-700 { background-color: rgb(var(--color-surface-secondary)) !important; }
+.dark .dark\:bg-primary-600 { background-color: rgb(var(--color-surface-tertiary)) !important; }
+.dark .dark\:bg-primary-500 { background-color: rgb(47, 99, 230) !important; }
+.dark .dark\:text-primary-700 { color: rgb(var(--color-primary)) !important; }
+.dark .dark\:text-primary-600 { color: rgb(var(--color-primary-hover)) !important; }
+.dark .dark\:border-primary-700 { border-color: rgb(var(--color-border-strong)) !important; }
+
+.bg-info-light { background-color: rgb(var(--color-info-light)) !important; }
+.text-info { color: rgb(var(--color-info)) !important; }
+.text-info-fg { color: rgb(var(--color-info-fg)) !important; }
+
+.bg-success-light { background-color: rgb(var(--color-success-light)) !important; }
+.text-success { color: rgb(var(--color-success)) !important; }
+.text-success-fg { color: rgb(var(--color-success-fg)) !important; }
+
+.bg-warning-light { background-color: rgb(var(--color-warning-light)) !important; }
+.text-warning { color: rgb(var(--color-warning)) !important; }
+.text-warning-fg { color: rgb(var(--color-warning-fg)) !important; }
+
+.bg-danger-light { background-color: rgb(var(--color-danger-light)) !important; }
+.text-danger { color: rgb(var(--color-danger)) !important; }
+.text-danger-fg { color: rgb(var(--color-danger-fg)) !important; }
