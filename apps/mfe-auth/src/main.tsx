@@ -2,7 +2,10 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { Toaster } from "./components/Toaster";
+import { TooltipProvider } from "./components/ui/tooltip";
 import "./index.css";
+import "./lib/theme"; // initialize theme on load
 
 if ("serviceWorker" in navigator && window.location.hostname === "localhost") {
   navigator.serviceWorker.getRegistrations().then((registrations) => {
@@ -49,7 +52,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <BrowserRouter>
-        <App />
+        <TooltipProvider delayDuration={300}>
+          <App />
+          <Toaster />
+        </TooltipProvider>
       </BrowserRouter>
     </ErrorBoundary>
   </React.StrictMode>

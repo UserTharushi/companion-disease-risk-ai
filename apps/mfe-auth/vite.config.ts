@@ -38,13 +38,13 @@ export default defineConfig({
           globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
           runtimeCaching: [
             {
-              urlPattern: /^https:\/\/.*\.firebaseapp\.com\/.*/i,
+              urlPattern: /^https?:\/\/localhost:4000\/api\/.*/i,
               handler: "NetworkFirst",
-              options: { cacheName: "firebase-auth-cache" },
+              options: { cacheName: "api-cache" },
             },
           ],
         },
-        devOptions: { enabled: true },
+        devOptions: { enabled: false },
       }),
   ],
   build: { target: "esnext", minify: false, cssCodeSplit: false },

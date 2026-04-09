@@ -5,9 +5,16 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { RoleSelectionPage } from "./pages/RoleSelectionPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { PetOwnerDashboardPage } from "./pages/PetOwnerDashboardPage";
 import { VeterinarianDashboardPage } from "./pages/VeterinarianDashboardPage";
 import { AdminDashboardPage } from "./pages/AdminDashboardPage";
+import {
+  BookingConfirmationPage,
+  ServiceFeedbackPage,
+  SymptomReportPage,
+  PredictionResultPage,
+} from "./pages/PetOwnerFlowPages";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export default function App() {
@@ -22,8 +29,10 @@ export default function App() {
       <Route path="/auth/onboarding"  element={<OnboardingPage />} />
       <Route path="/login"            element={<LoginPage />} />
       <Route path="/auth/login"       element={<LoginPage />} />
-      <Route path="/register"         element={<RegisterPage />} />
-      <Route path="/auth/register"    element={<RegisterPage />} />
+      <Route path="/register"              element={<RegisterPage />} />
+      <Route path="/auth/register"         element={<RegisterPage />} />
+      <Route path="/forgot-password"       element={<ForgotPasswordPage />} />
+      <Route path="/auth/forgot-password"  element={<ForgotPasswordPage />} />
       
       {/* Protected routes with role-based access */}
       <Route
@@ -34,6 +43,10 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      <Route path="/pets/booking-confirmed" element={<ProtectedRoute allowedRoles={["pet-owner"]}><BookingConfirmationPage /></ProtectedRoute>} />
+      <Route path="/pets/feedback" element={<ProtectedRoute allowedRoles={["pet-owner"]}><ServiceFeedbackPage /></ProtectedRoute>} />
+      <Route path="/pets/symptoms/:petId" element={<ProtectedRoute allowedRoles={["pet-owner"]}><SymptomReportPage /></ProtectedRoute>} />
+      <Route path="/pets/prediction/:petId" element={<ProtectedRoute allowedRoles={["pet-owner"]}><PredictionResultPage /></ProtectedRoute>} />
       <Route
         path="/vet-dashboard/*"
         element={

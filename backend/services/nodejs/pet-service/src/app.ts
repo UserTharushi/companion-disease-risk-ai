@@ -14,7 +14,10 @@ app.use(morgan("dev"));
 app.use(express.json());
 
 // Connect MongoDB
-mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/companion_ai")
+mongoose.connect(
+  process.env.MONGODB_URI ||
+    "mongodb://root:rootpassword@localhost:27017/companion_ai?authSource=admin"
+)
   .then(() => console.log("[pet-service] MongoDB connected"))
   .catch(err => console.error("[pet-service] MongoDB error", err));
 

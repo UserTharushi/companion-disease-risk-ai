@@ -1,26 +1,36 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { markOnboardingSeen, hasStartedSession, hasSeenInfoStep, markOnboardingStepDone } from "../lib/session";
+import { ArrowLeft, ArrowRight, Brain, MapPin, Syringe } from "lucide-react";
 import { AuthLayout } from "../components/AuthLayout";
+import { Button } from "../components/ui/button";
+import { Progress } from "../components/ui/progress";
+import { cn } from "../lib/utils";
 import onboardingAiImage from "../assets/images/onboarding-ai.jpg";
-import onboardingVetImage from "../assets/images/onboarding-vet.jpg";
+import onboardingVetImage from "../assets/images/auth-vet-consult.jpg";
 import onboardingVaccineImage from "../assets/images/onboarding-vaccine.jpg";
 
 const slides = [
   {
     title: "AI Disease Prediction",
-    description: "Leverage advanced machine learning to detect potential health risks early with explainable confidence indicators.",
-    image: onboardingAiImage,
+    description: "Leverage advanced machine learning to detect potential health risks early with clear confidence scores and actionable recommendations.",
+    icon: Brain,
+    image: onboardingVetImage,
+    badge: "SYMPTOM SCAN ACTIVE",
   },
   {
     title: "Smart Vet Recommendation",
-    description: "Get location-aware recommendations for qualified nearby clinics based on your pet's condition and history.",
-    image: onboardingVetImage,
+    description: "Get personalized suggestions for trusted clinics near you based on your pet's symptoms, location, and medical history.",
+    icon: MapPin,
+    image: onboardingAiImage,
+    badge: "NEARBY CLINICS",
   },
   {
     title: "Vaccination & Health Tracking",
-    description: "Maintain a complete digital health timeline with reminders for boosters, checkups, and preventive care.",
+    description: "Track vaccinations, checkups, and preventive care with timely reminders so your pet's health plan always stays up to date.",
+    icon: Syringe,
     image: onboardingVaccineImage,
+    badge: "VACCINE REMINDERS",
   },
 ];
 
@@ -30,66 +40,78 @@ export function OnboardingPage() {
   if (!hasStartedSession()) return <Navigate to="/auth" replace />;
   if (!hasSeenInfoStep()) return <Navigate to="/auth/info" replace />;
 
-  const slide = useMemo(() => slides[step], [step]);
+  const slide = slides[step];
+  const isLast = step === slides.length - 1;
+  const progressValue = 33 + ((step + 1) / slides.length) * 33;
 
-  function finishOnboarding() {
+  function finish() {
     markOnboardingStepDone();
     markOnboardingSeen();
     navigate("/auth/role");
   }
 
-  function handleNext() {
-    if (step === slides.length - 1) {
-      finishOnboarding();
-      return;
-    }
-    setStep((current) => current + 1);
-  }
-
   return (
-    <AuthLayout title="PetHealth AI" subtitle="Designed for pet owners, clinics, and care teams.">
-      <div className="flex flex-1 flex-col">
-        <div className="mb-4 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => setStep((current) => (current > 0 ? current - 1 : current))}
-            className={`text-4xl text-slate-700 ${step === 0 ? "invisible" : "visible"}`}
-          >
-            ←
-          </button>
-          <div className="text-4xl font-extrabold tracking-tight text-slate-900">PetHealth AI</div>
-          <button onClick={finishOnboarding} className="text-[18px] font-semibold text-slate-500 hover:text-slate-600">
-            {step === 1 ? "Help" : "Skip"}
-          </button>
+    <AuthLayout>
+      <div className="animate-slide-up">
+        <div className="mb-6 space-y-2">
+          <div className="flex items-center justify-between text-xs text-accent-faint">
+            <span>Step 2 of 3</span>
+            <button type="button" onClick={finish} className="font-medium text-accent-muted hover:text-accent transition-colors">
+              Skip
+            </button>
+          </div>
+          <Progress value={progressValue} />
         </div>
 
-        <div className="flex flex-1 flex-col text-center">
-          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-slate-50 shadow-sm">
-            <img src={slide.image} alt={slide.title} className="h-72 w-full object-cover" />
+        {/* Slide content */}
+        <div className="min-h-[280px]">
+          <div className="relative mb-4 overflow-hidden rounded-3xl border border-border bg-surface shadow-sm">
+            <img src={slide.image} alt={slide.title} className="h-52 w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/5 to-transparent" />
+            <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-primary shadow-sm">
+              <slide.icon className="h-3.5 w-3.5" />
+              <span>{slide.badge}</span>
+            </div>
+          </div>
+          <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-info-light">
+            <slide.icon className="h-5 w-5 text-info-fg" />
           </div>
 
-          <h1 className="mt-6 text-5xl font-extrabold leading-tight tracking-tight text-slate-900">{slide.title}</h1>
-          <p className="mx-auto mt-4 max-w-xl text-[18px] leading-9 text-slate-600">{slide.description}</p>
-
-          <div className="mt-10 flex justify-center gap-3">
-            {slides.map((_, index) => (
-              <span
-                key={index}
-                className={`h-3 rounded-full transition ${index === step ? "w-12 bg-blue-600" : "w-3 bg-slate-300"}`}
-              />
-            ))}
-          </div>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight text-accent">
+            {slide.title}
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-accent-subtle">
+            {slide.description}
+          </p>
         </div>
 
-        <button onClick={handleNext} className="mt-8 w-full rounded-[22px] bg-blue-600 py-4 text-lg font-semibold text-white shadow-[0_12px_28px_rgba(37,99,235,0.34)] transition hover:bg-blue-700">
-          {step === slides.length - 1 ? "Get Started" : "Next"}
-        </button>
+        {/* Dots */}
+        <div className="mt-6 flex gap-1.5">
+          {slides.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setStep(i)}
+              className={cn(
+                "h-1.5 rounded-full transition-all duration-300",
+                i === step ? "w-6 bg-primary" : "w-2 bg-border hover:bg-border-strong",
+              )}
+            />
+          ))}
+        </div>
 
-        {step !== slides.length - 1 && (
-          <button type="button" onClick={finishOnboarding} className="mt-3 text-center text-[18px] font-semibold text-slate-500">
-            Skip
-          </button>
-        )}
+        {/* Navigation */}
+        <div className="mt-8 flex gap-2">
+          {step > 0 && (
+            <Button variant="secondary" size="lg" onClick={() => setStep((s) => s - 1)} className="w-10 px-0">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
+          <Button size="lg" className="flex-1" onClick={() => isLast ? finish() : setStep((s) => s + 1)}>
+            {isLast ? "Continue" : "Next"}
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </AuthLayout>
   );

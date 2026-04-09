@@ -8,7 +8,11 @@
     scroll-behavior: smooth;
   }
   body {
-    @apply bg-gray-50 text-gray-900 font-sans;
+    @apply text-slate-800 font-sans;
+    background:
+      radial-gradient(circle at 14% 8%, rgba(90, 169, 255, 0.18) 0, rgba(90, 169, 255, 0) 44%),
+      radial-gradient(circle at 88% 12%, rgba(255, 138, 91, 0.16) 0, rgba(255, 138, 91, 0) 40%),
+      #f4f8ff;
   }
 }
 
@@ -17,7 +21,7 @@
     @apply bg-primary-500 hover:bg-primary-600 text-white font-semibold py-2 px-4 rounded-xl transition-colors duration-200;
   }
   .card {
-    @apply bg-white rounded-2xl shadow-sm border border-gray-100 p-4;
+    @apply bg-white rounded-2xl shadow-sm border border-surface-200 p-4;
   }
   .risk-badge-low    { @apply bg-accent-500 text-white text-xs font-semibold px-2 py-1 rounded-full; }
   .risk-badge-medium { @apply bg-warning-500 text-white text-xs font-semibold px-2 py-1 rounded-full; }
