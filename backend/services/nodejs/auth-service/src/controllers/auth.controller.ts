@@ -1,6 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
 import * as authService from "../services/auth.service";
 
+export async function forgotPassword(req: Request, res: Response, next: NextFunction) {
+  try {
+    await authService.forgotPassword(req.body.email);
+    res.json({ success: true, message: "If an account exists, reset instructions have been sent." });
+  } catch (err) { next(err); }
+}
+
 export async function register(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await authService.register(req.body);

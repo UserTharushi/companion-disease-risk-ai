@@ -82,14 +82,14 @@ define(['./workbox-af90992f'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.g0q6s5foojg"
+    "revision": "0.9t69rgguah8"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
     allowlist: [/^\/$/]
   }));
-  workbox.registerRoute(/^https:\/\/.*\.firebaseapp\.com\/.*/i, new workbox.NetworkFirst({
-    "cacheName": "firebase-auth-cache",
+  workbox.registerRoute(/^https?:\/\/localhost:4000\/api\/.*/i, new workbox.NetworkFirst({
+    "cacheName": "api-cache",
     plugins: []
   }), 'GET');
 
