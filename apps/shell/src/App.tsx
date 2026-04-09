@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ShellLayout } from "./layouts/ShellLayout";
@@ -31,7 +31,12 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
         <ErrorBoundary>
           <Suspense fallback={<LoadingSpinner />}>
             <Routes>
@@ -40,7 +45,6 @@ export default function App() {
 
               {/* Protected routes inside shell layout */}
               <Route path="/" element={<ShellLayout />}>
-                <Route index                  element={<Navigate to="/pets" replace />} />
                 <Route path="pets/*"          element={<PetProfileApp />} />
                 <Route path="symptom/*"       element={<SymptomApp />} />
                 <Route path="risk-results/*"  element={<RiskResultsApp />} />

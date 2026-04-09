@@ -21,7 +21,9 @@
     "@companion-ai/shared-types": "*"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.0",
     "@types/express": "^4.17.0",
+    "@types/morgan": "^1.9.0",
     "@types/multer": "^1.4.0",
     "@types/node": "^20.0.0",
     "typescript": "^5.4.0",

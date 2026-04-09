@@ -1,69 +1,99 @@
-import admin from "firebase-admin";
 import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 import type { User } from "@companion-ai/shared-types";
-import { readFileSync } from "node:fs";
-
-type RegisterBody = { email: string; password: string; displayName: string };
-type LoginBody = { idToken: string };
+import { UserModel } from "../models/user.model";
 
 type UiRole = "pet-owner" | "veterinarian" | "admin";
 type SystemRole = "owner" | "vet" | "admin";
 
+type RegisterBody = {
+  email: string;
+  password: string;
+  displayName: string;
+  phoneNumber?: string;
+  role?: UiRole;
+};
+
+type LoginBody = {
+  email: string;
+  password: string;
+};
+
 function normalizeRole(role: string | undefined): SystemRole {
-  const safeRole = role as UiRole | undefined;
-  if (safeRole === "admin") return "admin";
-  if (safeRole === "veterinarian") return "vet";
+  if (role === "admin") return "admin";
+  if (role === "veterinarian" || role === "vet") return "vet";
   return "owner";
 }
 
-// Initialize Firebase Admin (singleton)
-if (!admin.apps.length) {
-  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-  if (serviceAccountPath) {
-    const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, "utf-8"));
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-  } else {
-    admin.initializeApp({ credential: admin.credential.applicationDefault() });
-  }
+function httpError(message: string, statusCode: number): Error {
+  const err = new Error(message);
+  (err as Error & { statusCode?: number }).statusCode = statusCode;
+  return err;
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || "change-me";
 const JWT_EXPIRY = (process.env.JWT_EXPIRY as jwt.SignOptions["expiresIn"]) || "7d";
+const SALT_ROUNDS = 10;
 
-export async function register(body: RegisterBody & { role?: UiRole }) {
+export async function register(body: RegisterBody) {
   if (!body.email || !body.password || !body.displayName) {
-    const error = new Error("email, password, and displayName are required");
-    (error as Error & { statusCode?: number }).statusCode = 400;
-    throw error;
+    throw httpError("email, password, and displayName are required", 400);
   }
 
-  const firebaseUser = await admin.auth().createUser({
-    email: body.email,
-    password: body.password,
-    displayName: body.displayName,
-  });
+  const existing = await UserModel.findOne({ email: body.email.trim().toLowerCase() });
+  if (existing) {
+    throw httpError("An account with this email already exists", 409);
+  }
+
   const role = normalizeRole(body.role);
-  await admin.auth().setCustomUserClaims(firebaseUser.uid, { role });
-  const token = jwt.sign({ uid: firebaseUser.uid, role }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-  return { uid: firebaseUser.uid, email: firebaseUser.email, displayName: firebaseUser.displayName, role, token };
+  const passwordHash = await bcrypt.hash(body.password, SALT_ROUNDS);
+
+  const user = await UserModel.create({
+    email: body.email.trim().toLowerCase(),
+    passwordHash,
+    displayName: body.displayName,
+    phoneNumber: body.phoneNumber,
+    role,
+  });
+
+  const token = jwt.sign({ uid: user._id, role }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+
+  return {
+    uid: user._id,
+    email: user.email,
+    displayName: user.displayName,
+    role,
+    token,
+  };
 }
 
 export async function login(body: LoginBody) {
-  if (!body.idToken) {
-    const error = new Error("idToken is required");
-    (error as Error & { statusCode?: number }).statusCode = 400;
-    throw error;
+  if (!body.email || !body.password) {
+    throw httpError("email and password are required", 400);
   }
 
-  // Verify Firebase ID token from client-side Firebase Auth
-  const decoded = await admin.auth().verifyIdToken(body.idToken);
-  const role = normalizeRole((decoded.role as string | undefined) ?? "pet-owner");
-  const token = jwt.sign({ uid: decoded.uid, role }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-  return { uid: decoded.uid, role, token };
+  const user = await UserModel.findOne({ email: body.email.trim().toLowerCase() });
+  if (!user) {
+    throw httpError("Invalid email or password", 401);
+  }
+
+  const isMatch = await user.comparePassword(body.password);
+  if (!isMatch) {
+    throw httpError("Invalid email or password", 401);
+  }
+
+  const token = jwt.sign({ uid: user._id, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+
+  return {
+    uid: user._id,
+    email: user.email,
+    displayName: user.displayName,
+    role: user.role,
+    token,
+  };
 }
 
 export async function logout(_uid: string) {
-  // Token invalidation is handled on client side; could revoke Firebase sessions here
   return true;
 }
 
@@ -73,13 +103,32 @@ export async function refreshToken(refreshToken: string) {
   return { token };
 }
 
+export async function forgotPassword(email: string) {
+  if (!email) {
+    throw httpError("email is required", 400);
+  }
+  // Check if user exists (don't reveal if they do or don't for security)
+  const user = await UserModel.findOne({ email: email.trim().toLowerCase() });
+  if (user) {
+    // TODO: integrate with notification-service to send actual reset email
+    // For dev, just log the reset token
+    const resetToken = jwt.sign({ uid: user._id, purpose: "password-reset" }, JWT_SECRET, { expiresIn: "1h" });
+    console.log(`[auth-service] Password reset token for ${email}: ${resetToken}`);
+  }
+  // Always return success to prevent email enumeration
+  return true;
+}
+
 export async function verifyToken(token: string): Promise<Partial<User>> {
   const decoded = jwt.verify(token, JWT_SECRET) as { uid: string; role: string };
-  const firebaseUser = await admin.auth().getUser(decoded.uid);
+  const user = await UserModel.findById(decoded.uid).select("-passwordHash");
+  if (!user) {
+    throw httpError("User not found", 404);
+  }
   return {
-    uid:         firebaseUser.uid,
-    email:       firebaseUser.email ?? "",
-    displayName: firebaseUser.displayName ?? "",
-    role: decoded.role as User["role"],
+    uid: user._id.toString(),
+    email: user.email,
+    displayName: user.displayName,
+    role: user.role as User["role"],
   };
 }

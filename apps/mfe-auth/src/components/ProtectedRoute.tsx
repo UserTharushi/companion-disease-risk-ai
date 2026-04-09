@@ -20,11 +20,13 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  // Token exists but role is not in allowed list
-  if (!userRole || !allowedRoles.includes(userRole)) {
-    console.warn(`Access denied. User role "${userRole}" not in allowed roles: ${allowedRoles.join(", ")}`);
-    
-    // Redirect to appropriate dashboard based on actual role
+  // No verified role — session is stale, send to login
+  if (!userRole) {
+    return <Navigate to="/auth" state={{ from: location }} replace />;
+  }
+
+  // Role doesn't match this route — redirect to correct dashboard
+  if (!allowedRoles.includes(userRole)) {
     if (userRole === "veterinarian") {
       return <Navigate to="/vet-dashboard" replace />;
     } else if (userRole === "admin") {

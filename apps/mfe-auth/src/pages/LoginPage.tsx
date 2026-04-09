@@ -3,252 +3,212 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
-import { auth, googleProvider } from "../lib/firebase";
-import { getAccessToken, saveAccessToken, verifyAndSaveRole, getSelectedRole, saveProfileName, getRegisteredRoleForEmail, getVerifiedRole } from "../lib/session";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { loginUser } from "../lib/auth-api";
+import { toast } from "../lib/use-toast";
+import {
+  getAccessToken, saveAccessToken, verifyAndSaveRole, saveUserCredentials,
+  getSelectedRole, saveProfileName, getRegisteredRoleForEmail, getVerifiedRole, saveSelectedRole,
+  isManagedVeterinarianEmail,
+} from "../lib/session";
 import { AuthLayout } from "../components/AuthLayout";
 import { redirectToPets } from "../lib/post-auth-redirect";
-import authVetConsultImage from "../assets/images/auth-vet-consult.jpg";
-
-function deriveNameFromEmail(email: string | null | undefined): string {
-  if (!email) return "Pet Owner";
-  const localPart = email.split("@")[0] ?? "";
-  const cleaned = localPart.replace(/[._-]+/g, " ").trim();
-  if (!cleaned) return "Pet Owner";
-  return cleaned
-    .split(" ")
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Separator } from "../components/ui/separator";
+import { Alert } from "../components/ui/alert";
+import { AlertTriangle } from "lucide-react";
+import { t, useLanguageStore } from "../lib/language";
 
 const loginSchema = z.object({
-  email: z.string().email("Enter a valid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  email: z.string().email("Enter a valid email address"),
+  password: z.string().min(6, "Minimum 6 characters"),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
 
+const ROLE_LABELS: Record<string, string> = {
+  "pet-owner": "Pet Owner",
+  "veterinarian": "Veterinarian",
+  "admin": "Admin",
+};
+
+const ROLE_OPTIONS: Array<{ id: "pet-owner" | "veterinarian" | "admin"; label: string }> = [
+  { id: "pet-owner", label: "Pet Owner" },
+  { id: "veterinarian", label: "Veterinarian" },
+  { id: "admin", label: "Admin" },
+];
+
 export function LoginPage() {
   const navigate = useNavigate();
-  const selectedRole = getSelectedRole() || "pet-owner";
+  const language = useLanguageStore((state) => state.language);
+  const [selectedRole, setSelectedRole] = useState<"pet-owner" | "veterinarian" | "admin">(() => {
+    const saved = getSelectedRole();
+    if (saved === "pet-owner" || saved === "veterinarian" || saved === "admin") {
+      return saved;
+    }
+    return "pet-owner";
+  });
   const verifiedRole = getVerifiedRole();
-  const roleAutofillSection = `section-${selectedRole.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
-  const roleLabel = selectedRole === "pet-owner" ? "Pet Owner" : selectedRole === "veterinarian" ? "Veterinarian" : "Admin";
-
-  if (getAccessToken()) {
-    const activeRole = verifiedRole || selectedRole;
-    const dashboardPath = activeRole === "veterinarian"
-      ? "/vet-dashboard"
-      : activeRole === "admin"
-        ? "/admin-dashboard"
-        : "/pets";
-    return <Navigate to={dashboardPath} replace />;
-  }
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginForm>({
+  const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
+    defaultValues: { email: "", password: "" },
   });
+
+  if (getAccessToken()) {
+    const activeRole = verifiedRole || selectedRole;
+    const path = activeRole === "veterinarian" ? "/vet-dashboard" : activeRole === "admin" ? "/admin-dashboard" : "/pets";
+    return <Navigate to={path} replace />;
+  }
 
   const onSubmit = handleSubmit(async (values) => {
     try {
       setErrorMessage(null);
       setIsSubmitting(true);
 
+      if (selectedRole === "veterinarian" && !isManagedVeterinarianEmail(values.email)) {
+        setErrorMessage(language === "si"
+          ? "වෙට් පරිවේශය පාලනය කරන්නේ ඇඩ්මින් විසිනි. ලොගින් වීමට පෙර ඇඩ්මින් ඔබගේ පැතිකඩ එකතු කරණු ඇතැයි ඉල්ලන්න."
+          : language === "ta"
+            ? "வெட் அணுகல் நிர்வாகியால் நிர்வகிக்கப்படுகிறது. உள்நுழைவதற்கு முன் உங்கள் சுயவிவரத்தை சேர்க்க நிர்வாகியை அணுகவும்."
+            : "Veterinarian access is managed by admin. Ask an admin to add your profile before signing in.");
+        return;
+      }
+
       const expectedRole = getRegisteredRoleForEmail(values.email);
-      if (!expectedRole) {
-        setErrorMessage("No account found for this email. Please register first.");
-        setIsSubmitting(false);
+      if (expectedRole && expectedRole !== selectedRole) {
+        setErrorMessage(`This account is registered as ${ROLE_LABELS[expectedRole] ?? expectedRole}. Select that role to continue.`);
         return;
       }
 
-      if (expectedRole !== selectedRole) {
-        const roleLabel = expectedRole === "pet-owner" ? "Pet Owner" : expectedRole === "veterinarian" ? "Veterinarian" : "Admin";
-        setErrorMessage(`This account is registered as ${roleLabel}. Please choose that role to login.`);
-        setIsSubmitting(false);
-        return;
+      const { token, displayName } = await loginUser({ email: values.email, password: values.password });
+
+      if (!getRegisteredRoleForEmail(values.email)) {
+        saveUserCredentials(values.email, selectedRole);
       }
+      verifyAndSaveRole(values.email, selectedRole);
+      saveProfileName(displayName || values.email.split("@")[0], selectedRole);
+      saveAccessToken(token);
 
-      const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
-      const firebaseIdToken = await userCredential.user.getIdToken();
-      const displayName = userCredential.user.displayName || deriveNameFromEmail(userCredential.user.email);
-
-      // Verify and save the role
-      const roleVerified = verifyAndSaveRole(values.email, selectedRole);
-      if (!roleVerified) {
-        setErrorMessage("Role verification failed. Please register again.");
-        setIsSubmitting(false);
-        return;
-      }
-
-      saveProfileName(displayName, selectedRole);
-      saveAccessToken(firebaseIdToken);
+      toast({ title: "Signed in", variant: "success" });
       redirectToPets(navigate);
     } catch (error: unknown) {
-      const msg = (error as { code?: string; message?: string })?.code
-        ?? (error instanceof Error ? error.message : "Login failed");
-      setErrorMessage(msg.replace("auth/", "").replaceAll("-", " "));
+      const msg = error instanceof Error ? error.message : "Authentication failed";
+      setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
     }
   });
 
-  async function handleGoogleLogin() {
-    try {
-      setErrorMessage(null);
-      setIsSubmitting(true);
-      const userCredential = await signInWithPopup(auth, googleProvider);
-      const email = userCredential.user.email || "";
-      const expectedRole = getRegisteredRoleForEmail(email);
-
-      if (!expectedRole) {
-        setErrorMessage("No account found for this email. Please register first.");
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (expectedRole !== selectedRole) {
-        const roleLabel = expectedRole === "pet-owner" ? "Pet Owner" : expectedRole === "veterinarian" ? "Veterinarian" : "Admin";
-        setErrorMessage(`This account is registered as ${roleLabel}. Please choose that role to login.`);
-        setIsSubmitting(false);
-        return;
-      }
-
-      const firebaseIdToken = await userCredential.user.getIdToken();
-      const displayName = userCredential.user.displayName || deriveNameFromEmail(userCredential.user.email);
-
-      // Verify and save the role
-      const roleVerified = verifyAndSaveRole(email, selectedRole);
-      if (!roleVerified) {
-        setErrorMessage("Role verification failed. Please register again.");
-        setIsSubmitting(false);
-        return;
-      }
-
-      saveProfileName(displayName, selectedRole);
-      saveAccessToken(firebaseIdToken);
-      redirectToPets(navigate);
-    } catch (error: unknown) {
-      const msg = (error as { code?: string; message?: string })?.code
-        ?? (error instanceof Error ? error.message : "Google login failed");
-      setErrorMessage(msg.replace("auth/", "").replaceAll("-", " "));
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
   return (
-    <AuthLayout title="Welcome Back" subtitle="Secure login for pet owners, veterinarians, and administrators.">
-      <div className="flex flex-1 flex-col">
-        <header className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
-          <button type="button" onClick={() => navigate("/auth/role")} className="text-4xl text-slate-800">←</button>
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">Sign In</h1>
-          <span className="w-6"></span>
-        </header>
+    <AuthLayout>
+      <div className="animate-slide-up">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-accent">Sign in</h1>
+            <p className="mt-1 text-sm text-accent-subtle">
+              {language === "si" ? "ඉදිරියට යාම සඳහා ඔබේ තොරතුරු ඇතුළත් කරන්න" : language === "ta" ? "தொடர உங்கள் விவரங்களை உள்ளிடவும்" : "Enter your credentials to continue"}
+            </p>
+          </div>
+        </div>
 
-        <div className="mb-6 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-          <img
-            src={authVetConsultImage}
-            alt="Vet consulting pet owner"
-            className="h-72 w-full object-cover"
-          />
-          <div className="px-5 pb-5 pt-4 text-center">
-            <h2 className="text-6xl font-extrabold tracking-tight text-slate-900">Welcome Back</h2>
-            <p className="mt-2 text-[18px] leading-8 text-slate-600">Log in to monitor your pet's health with AI</p>
-            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
-              Role: {roleLabel}
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {ROLE_OPTIONS.map((roleOption) => {
+            const active = selectedRole === roleOption.id;
+            return (
+              <Button
+                key={roleOption.id}
+                type="button"
+                size="sm"
+                variant={active ? "default" : "secondary"}
+                onClick={() => {
+                  setSelectedRole(roleOption.id);
+                  saveSelectedRole(roleOption.id);
+                  setErrorMessage(null);
+                }}
+              >
+                  {roleOption.id === "pet-owner"
+                    ? (language === "si" ? "සුරතල් හිමිකරු" : language === "ta" ? "செல்லப்பிராணி உரிமையாளர்" : roleOption.label)
+                    : roleOption.id === "veterinarian"
+                      ? (language === "si" ? "වෙට්වර්" : language === "ta" ? "வெட்" : roleOption.label)
+                      : (language === "si" ? "ඇඩ්මින්" : language === "ta" ? "நிர்வாகி" : roleOption.label)}
+              </Button>
+            );
+          })}
+        </div>
+
+        <form onSubmit={onSubmit} className="mt-6 space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              {...register("email")}
+              id="email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@company.com"
+            />
+            {errors.email && <p className="text-xs text-red-600">{errors.email.message}</p>}
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <Link to="/auth/forgot-password" className="text-xs text-accent-subtle hover:text-accent transition-colors">
+                {language === "si" ? "මුරපදය අමතකද?" : language === "ta" ? "கடவுச்சொல் மறந்துவிட்டதா?" : "Forgot password?"}
+              </Link>
+            </div>
+            <div className="relative">
+              <Input
+                {...register("password")}
+                id="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                placeholder="Enter password"
+                className="pr-9"
+              />
               <button
                 type="button"
-                onClick={() => navigate("/auth/role")}
-                className="text-xs underline underline-offset-2"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-accent-faint hover:text-accent-muted"
+                tabIndex={-1}
               >
-                Change
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-          </div>
-        </div>
-
-        <form key={selectedRole} onSubmit={onSubmit} className="space-y-5" autoComplete="off">
-          <div>
-            <label className="auth-label text-[18px]">Email Address</label>
-            <input
-              {...register("email")}
-              type="email"
-              autoComplete={`${roleAutofillSection} email`}
-              className="auth-input"
-              placeholder="name@example.com"
-            />
-            {errors.email && <p className="text-xs text-red-600 mt-1">{errors.email.message}</p>}
+            {errors.password && <p className="text-xs text-red-600">{errors.password.message}</p>}
           </div>
 
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="auth-label text-[18px]">Password</label>
-              <button type="button" className="text-[18px] font-semibold text-blue-600">Forgot Password?</button>
-            </div>
-            <input
-              {...register("password")}
-              type="password"
-              autoComplete={`${roleAutofillSection} current-password`}
-              className="auth-input"
-              placeholder="••••••••"
-            />
-            {errors.password && <p className="text-xs text-red-600 mt-1">{errors.password.message}</p>}
-          </div>
+          {errorMessage && (
+            <Alert variant="danger" className="animate-slide-up">
+              <AlertTriangle />
+              <span>{errorMessage}</span>
+            </Alert>
+          )}
 
-          <div className="flex items-center gap-2 py-1 text-[18px]">
-            <input type="checkbox" className="h-6 w-6 rounded border-slate-300" />
-            <label className="text-slate-700">Remember this device</label>
-          </div>
-
-          {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="auth-primary-btn mt-2"
-          >
-            {isSubmitting ? "Signing in..." : "Sign In"}
-          </button>
+          <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
+            {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> {t(language, "signIn")}...</> : t(language, "signIn")}
+          </Button>
         </form>
 
-        <div className="mt-5 text-center text-lg text-slate-500">OR CONTINUE WITH</div>
-
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <button
-            onClick={handleGoogleLogin}
-            disabled={isSubmitting}
-            className="auth-secondary-btn"
-          >
-            Google
-          </button>
-          <button
-            type="button"
-            className="auth-secondary-btn"
-          >
-            Apple
-          </button>
+        <div className="relative my-6">
+          <Separator />
+          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-surface-secondary px-3 text-xs text-accent-faint lg:bg-surface">
+            {language === "si" ? "හෝ" : language === "ta" ? "அல்லது" : "or"}
+          </span>
         </div>
 
-        <p className="mt-6 text-center text-lg text-slate-600">
-          Don&apos;t have an account? <Link to="/auth/register" className="font-semibold text-blue-600">Create Account</Link>
+        <p className="text-center text-sm text-accent-subtle">
+          {language === "si" ? "ගිණුමක් නැද්ද?" : language === "ta" ? "கணக்கு இல்லையா?" : "Don&apos;t have an account?"}{" "}
+          <Link to="/auth/register" className="font-medium text-accent hover:underline">
+            {t(language, "createAccount")}
+          </Link>
         </p>
-
-        <div className="mt-8 pb-2 text-center text-sm text-slate-400">
-          <p>Privacy Policy  ·  Terms of Service  ·  Help Center</p>
-          <p className="mt-2">© 2026 PetHealth AI. All rights reserved.</p>
-        </div>
       </div>
     </AuthLayout>
   );
