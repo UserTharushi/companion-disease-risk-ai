@@ -59,3 +59,6 @@ service-account-key.json
 *.pkl
 *.joblib
 model_artifacts/
+
+# Vite config temp files
+*.timestamp-*.mjs

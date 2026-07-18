@@ -1,0 +1,35 @@
+# Node dependencies and build outputs
+node_modules
+**/node_modules
+**/dist
+**/build
+**/.next
+**/.nuxt
+**/.vite
+**/.cache
+**/coverage
+**/dev-dist
+
+# VCS/editor/cache metadata
+.git
+.gitignore
+.vscode
+.turbo
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+
+# Local env and secrets
+.env.local
+.env.*.local
+
+# Large local docs/data not needed for image builds
+Book1.csv
+Book1 - Copy.xlsx
+*.pdf
+
+# Runtime data folders not needed in build contexts
+neo4j_data
+mongo_data

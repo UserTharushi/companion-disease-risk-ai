@@ -74,6 +74,8 @@ docker compose up --build
 
 ## Notes
 
-- This is a scaffolded workspace layout intended for iterative Agile sprint development.
-- Frontend micro-frontends are route-ready with placeholder pages.
-- Service endpoints are scaffolded and ready for feature implementation.
+- The Neo4j ontology schema is applied automatically by ai-service on startup; a manual runner exists at `scripts/apply_ontology.py`.
+- Set `GOOGLE_API_KEY` in `.env` (aistudio.google.com) to enable Gemini-powered agent reasoning; without it the agentic layer runs in deterministic rule-based mode.
+- ML model artifacts are committed under `backend/services/python/ai-service/app/models/`; regenerate them with the scripts in `backend/services/python/ai-service/training/` (Python 3.11).
+- The primary user-facing app is `apps/mfe-auth` (port 3001) — auth, all three role dashboards, symptom→prediction→booking flows. The shell + other MFEs are scaffold.
+- Verification guide: `docs/VERIFICATION.md`. ML/dataset documentation: `docs/ml/README.md`.
