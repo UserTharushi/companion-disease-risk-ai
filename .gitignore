@@ -53,12 +53,17 @@ htmlcov/
 !package.json
 !tsconfig*.json
 !turbo.json
+# Keep committed: model metrics + ML validation reports (thesis evidence)
+!docs/ml/*.json
+!backend/services/python/ai-service/app/models/*.json
 service-account-key.json
 
 # Python
 *.pkl
 *.joblib
 model_artifacts/
+# Keep the trained model artifacts so the repo is self-contained (small: ~0.5 MB)
+!backend/services/python/ai-service/app/models/*.joblib
 
 # Vite config temp files
 *.timestamp-*.mjs

@@ -1,0 +1,102 @@
+{
+  "note": "READ-ONLY sensitivity analysis; production model unchanged.",
+  "train_positive_rate": 0.977,
+  "n_per_population": 400,
+  "seed": 9,
+  "populations": {
+    "serious": "chronic-disease cases (must stay >= medium)",
+    "mild": "benign single-sign cases (should reach low)"
+  },
+  "results": [
+    {
+      "calibration": "baseline",
+      "serious_distribution": {
+        "low": 0.0,
+        "medium": 0.003,
+        "high": 0.998
+      },
+      "serious_pct_ge_medium (SAFETY)": 1.0,
+      "mild_distribution": {
+        "low": 0.0,
+        "medium": 1.0,
+        "high": 0.0
+      },
+      "mild_pct_low (SPECIFICITY)": 0.0
+    },
+    {
+      "calibration": "prior-corrected(0.5)",
+      "serious_distribution": {
+        "low": 0.013,
+        "medium": 0.917,
+        "high": 0.07
+      },
+      "serious_pct_ge_medium (SAFETY)": 0.987,
+      "mild_distribution": {
+        "low": 0.593,
+        "medium": 0.407,
+        "high": 0.0
+      },
+      "mild_pct_low (SPECIFICITY)": 0.593
+    },
+    {
+      "calibration": "prior-corrected(0.3)",
+      "serious_distribution": {
+        "low": 0.182,
+        "medium": 0.818,
+        "high": 0.0
+      },
+      "serious_pct_ge_medium (SAFETY)": 0.818,
+      "mild_distribution": {
+        "low": 1.0,
+        "medium": 0.0,
+        "high": 0.0
+      },
+      "mild_pct_low (SPECIFICITY)": 1.0
+    },
+    {
+      "calibration": "severity-weighted(0.4/0.6)",
+      "serious_distribution": {
+        "low": 0.0,
+        "medium": 0.593,
+        "high": 0.407
+      },
+      "serious_pct_ge_medium (SAFETY)": 1.0,
+      "mild_distribution": {
+        "low": 0.0,
+        "medium": 1.0,
+        "high": 0.0
+      },
+      "mild_pct_low (SPECIFICITY)": 0.0
+    },
+    {
+      "calibration": "threshold-shift(0.72/0.50)",
+      "serious_distribution": {
+        "low": 0.0,
+        "medium": 0.1,
+        "high": 0.9
+      },
+      "serious_pct_ge_medium (SAFETY)": 1.0,
+      "mild_distribution": {
+        "low": 0.0,
+        "medium": 1.0,
+        "high": 0.0
+      },
+      "mild_pct_low (SPECIFICITY)": 0.0
+    },
+    {
+      "calibration": "prior(0.3)+sev(0.4/0.6)",
+      "serious_distribution": {
+        "low": 0.305,
+        "medium": 0.695,
+        "high": 0.0
+      },
+      "serious_pct_ge_medium (SAFETY)": 0.695,
+      "mild_distribution": {
+        "low": 1.0,
+        "medium": 0.0,
+        "high": 0.0
+      },
+      "mild_pct_low (SPECIFICITY)": 1.0
+    }
+  ]
+}
