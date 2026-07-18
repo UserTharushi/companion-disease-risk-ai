@@ -36,6 +36,13 @@ function isValidRole(role: string): role is UserRole {
   return role === "pet-owner" || role === "veterinarian" || role === "admin";
 }
 
+export function normalizeUserRole(role: string | null | undefined): UserRole | null {
+  if (role === "owner" || role === "pet-owner") return "pet-owner";
+  if (role === "vet" || role === "veterinarian") return "veterinarian";
+  if (role === "admin") return "admin";
+  return null;
+}
+
 function parseRoleMap(): Record<string, string> {
   const rawMap = localStorage.getItem(USER_ROLE_BY_EMAIL_KEY);
   if (!rawMap) return {};
@@ -241,13 +248,29 @@ export function verifyAndSaveRole(email: string, role: string): boolean {
   return true;
 }
 
+/**
+ * Persist the role returned by the SERVER after a successful login.
+ * Overwrites any stale local mapping — the backend is the source of truth.
+ */
+export function syncServerRole(email: string, role: string): void {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail || !isValidRole(role)) return;
+
+  const roleByEmail = parseRoleMap();
+  roleByEmail[normalizedEmail] = role;
+  localStorage.setItem(USER_ROLE_BY_EMAIL_KEY, JSON.stringify(roleByEmail));
+  localStorage.setItem(USER_EMAIL_KEY, normalizedEmail);
+  localStorage.setItem(USER_ROLE_KEY, role);
+  localStorage.setItem(`${USER_EMAIL_BY_ROLE_PREFIX}${role}`, normalizedEmail);
+  localStorage.setItem(VERIFIED_ROLE_KEY, role);
+}
+
 export function getVerifiedRole(): UserRole | null {
   const verifiedValue = localStorage.getItem(VERIFIED_ROLE_KEY);
   if (!verifiedValue) return null;
 
-  if (isValidRole(verifiedValue)) {
-    return verifiedValue;
-  }
+  const normalized = normalizeUserRole(verifiedValue);
+  if (normalized) return normalized;
 
   // Backward compatibility with older boolean flag format.
   if (verifiedValue === "true") {

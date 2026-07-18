@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, Calendar, Camera, Check, ClipboardList, MapPin, Phone, Share2, ShieldCheck, Star, Stethoscope, Trophy, Upload } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -7,8 +7,14 @@ import { Label } from "../components/ui/label";
 import { ThemeSwitcher } from "../components/ThemeSwitcher";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { useLanguageStore } from "../lib/language";
+import { getOwnerId, listOwnerPets, type BackendPet } from "../lib/pet-api";
+import { createAppointment, listClinics } from "../lib/clinic-api";
+import { submitPrediction, getPrediction, type PredictionResult } from "../lib/prediction-api";
+import { analyzeCase, getRecommendations, type AgentResponse } from "../lib/agent-api";
+import { createVaccination, listVaccinations, type VaccinationRecord } from "../lib/vaccination-api";
+import { toast } from "../lib/use-toast";
+import { Disclaimer } from "../components/Disclaimer";
 import petBuddyImage from "../assets/images/pet-buddy.jpg";
-import petLunaImage from "../assets/images/pet-luna.jpg";
 import authVetConsultImage from "../assets/images/auth-vet-consult.jpg";
 import onboardingVaccineImage from "../assets/images/onboarding-vaccine.jpg";
 
@@ -32,6 +38,7 @@ type Surgeon = {
   specialization: string;
   avatar: string;
   slots: string[];
+  slotRecords?: Array<{ id: string; label: string }>;
 };
 
 type Clinic = {
@@ -66,27 +73,64 @@ const cardClassP6 = `${cardClass} p-6`;
 const selectClass = "h-10 w-full rounded-xl border border-border bg-surface px-3 text-accent outline-none transition focus:border-primary dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100";
 const textAreaClass = "w-full rounded-2xl border border-border bg-surface px-4 py-3 text-base text-accent outline-none transition focus:border-primary dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100";
 
-const fallbackPets: Pet[] = [
-  { id: "pet-1", name: "Buddy", species: "Dog", breed: "Golden Retriever", age: "3", weightKg: "34", photoDataUrl: petBuddyImage },
-  { id: "pet-2", name: "Luna", species: "Cat", breed: "Siamese", age: "4", weightKg: "5", photoDataUrl: petLunaImage },
-];
+function formatSlotLabel(datetime: string) {
+  const value = new Date(datetime);
+  if (Number.isNaN(value.getTime())) {
+    return datetime;
+  }
 
-const clinics: Clinic[] = [
-  {
-    id: "clinic-1",
-    name: "PetHealth Central Clinic",
-    address: "123 Wellness Way, Medical District",
-    phone: "+1 (555) 010-9988",
-    image: authVetConsultImage,
-    rating: 4.8,
-    reviews: 128,
-    surgeons: [
-      { id: "s1", name: "Dr. James Wilson", specialization: "Orthopedic", avatar: authVetConsultImage, slots: ["Mon 09:00 AM", "Mon 10:30 AM", "Mon 01:00 PM", "Mon 02:30 PM", "Mon 04:00 PM"] },
-      { id: "s2", name: "Dr. Sarah Chen", specialization: "General", avatar: onboardingVaccineImage, slots: ["Tue 09:00 AM", "Tue 11:30 AM", "Wed 01:30 PM"] },
-      { id: "s3", name: "Dr. Marc Aris", specialization: "Dental", avatar: authVetConsultImage, slots: ["Thu 10:00 AM", "Thu 02:00 PM", "Fri 09:30 AM"] },
-    ],
-  },
-];
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(value);
+}
+
+function mapClinicDirectory(clinics: Awaited<ReturnType<typeof listClinics>>): Clinic[] {
+  const images = [authVetConsultImage, onboardingVaccineImage, petBuddyImage];
+
+  return clinics.map((clinic, index) => ({
+    id: clinic.id,
+    name: clinic.name,
+    address: clinic.address,
+    phone: clinic.phone,
+    image: images[index % images.length],
+    rating: clinic.rating,
+    reviews: clinic.reviewCount,
+    surgeons: clinic.surgeons.map((surgeon) => ({
+      id: surgeon.id,
+      name: surgeon.name,
+      specialization: surgeon.specialization,
+      avatar: surgeon.photoURL || images[index % images.length],
+      slots: surgeon.availableSlots.filter((slot) => !slot.isBooked).map((slot) => formatSlotLabel(slot.datetime)),
+      slotRecords: surgeon.availableSlots.filter((slot) => !slot.isBooked).map((slot) => ({ id: slot.id, label: formatSlotLabel(slot.datetime) })),
+    })),
+  }));
+}
+
+function useClinicDirectory() {
+  const [directory, setDirectory] = useState<Clinic[]>([]);
+
+  useEffect(() => {
+    let active = true;
+
+    listClinics()
+      .then((items) => {
+        if (!active || items.length === 0) {
+          return;
+        }
+
+        setDirectory(mapClinicDirectory(items));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return directory;
+}
 
 function safeRead<T>(key: string, fallback: T): T {
   try {
@@ -95,6 +139,90 @@ function safeRead<T>(key: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function removeLegacySeedPets(pets: Pet[]): Pet[] {
+  return pets.filter(
+    (pet) =>
+      !(
+        (pet.id === "pet-1" && pet.name === "Buddy") ||
+        (pet.id === "pet-2" && pet.name === "Luna")
+      )
+  );
+}
+
+function readPets(): Pet[] {
+  return removeLegacySeedPets(safeRead<Pet[]>(PETS_KEY, []));
+}
+
+function toPetRecord(pet: BackendPet): Pet {
+  const normalizedId = pet.id || pet._id;
+  if (!normalizedId) {
+    throw new Error("Pet id is missing from backend response");
+  }
+
+  return {
+    id: normalizedId,
+    name: pet.name,
+    species: pet.species === "cat" ? "Cat" : "Dog",
+    breed: pet.breed,
+    age: String(pet.ageYears),
+    weightKg: String(pet.weightKg),
+    photoDataUrl: pet.photoURL,
+    vaccinationName: pet.vaccinationName,
+    vaccinationDate: pet.vaccinationDate,
+    vaccinationFrequency: pet.vaccinationFrequency,
+    nextVaccinationDate: pet.nextVaccinationDate,
+  };
+}
+
+function useFlowPets() {
+  const [pets, setPets] = useState<Pet[]>(() => readPets());
+
+  useEffect(() => {
+    let active = true;
+    const localPets = readPets();
+    if (localPets.length > 0) {
+      setPets(localPets);
+    }
+
+    listOwnerPets(getOwnerId())
+      .then((items) => {
+        if (!active || items.length === 0) return;
+        const mapped = removeLegacySeedPets(items.map(toPetRecord));
+        setPets(mapped);
+        localStorage.setItem(PETS_KEY, JSON.stringify(mapped));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return pets;
+}
+
+function EmptyPetState({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) {
+  const navigate = useNavigate();
+
+  return (
+    <PageShell title={title}>
+      <section className={`${cardClassP6} text-center`}>
+        <h2 className="text-2xl font-semibold text-accent">No pets yet</h2>
+        <p className="mt-2 text-sm text-accent-subtle">{message}</p>
+        <Button size="xl" className="mt-5" onClick={() => navigate("/pets/create")}>
+          Add Pet
+        </Button>
+      </section>
+    </PageShell>
+  );
 }
 
 function PageShell({ title, rightAction, children }: { title: string; rightAction?: ReactNode; children: ReactNode }) {
@@ -128,16 +256,69 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
   const { petId } = useParams();
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
-  const pets = safeRead<Pet[]>(PETS_KEY, fallbackPets);
+  const pets = useFlowPets();
   const resolvedPetId = petIdOverride ?? petId;
   const pet = pets.find((p) => p.id === resolvedPetId) ?? pets[0];
 
-  const vaccineHistory = pet.vaccinationName
-    ? [{ id: "v1", name: pet.vaccinationName, date: pet.vaccinationDate || "Not provided", freq: pet.vaccinationFrequency || "Annual", status: pet.nextVaccinationDate ? "due" as const : "active" as const }]
-    : [
-        { id: "v1", name: language === "si" ? "ජලභීතිකාව එන්නත" : language === "ta" ? "ரேபிஸ் தடுப்பூசி" : "Rabies Vaccine", date: "Oct 12, 2023", freq: language === "si" ? "වාර්ෂික" : language === "ta" ? "வருடாந்திரம்" : "Annual", status: "active" as const },
-        { id: "v2", name: "Bordetella", date: "Apr 22, 2024", freq: language === "si" ? "කල් ඉකුත් වීමට නියමිත" : language === "ta" ? "காலாவதியாகும்" : "Expires", status: "due" as const },
-      ];
+  const [vaccineRecords, setVaccineRecords] = useState<VaccinationRecord[]>([]);
+  const [showAddVaccine, setShowAddVaccine] = useState(false);
+  const [newVaccine, setNewVaccine] = useState({ vaccineName: "", administeredAt: "", nextDueAt: "" });
+  const [savingVaccine, setSavingVaccine] = useState(false);
+
+  const currentPetId = pet?.id ?? "";
+  useEffect(() => {
+    if (!currentPetId) return;
+    let active = true;
+    listVaccinations(currentPetId)
+      .then((records) => { if (active) setVaccineRecords(records); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [currentPetId]);
+
+  if (!pet) {
+    return (
+      <EmptyPetState
+        title="Pet Profile"
+        message={language === "si" ? "සුරතල් පැතිකඩක් බැලීමට පෙර සුරතලෙකු එක් කරන්න." : language === "ta" ? "செல்லப்பிராணி சுயவிவரத்தைப் பார்க்க முன்னர் ஒரு செல்லப்பிராணியைச் சேர்க்கவும்." : "Add a pet before viewing profile details."}
+      />
+    );
+  }
+
+  async function saveVaccineRecord() {
+    if (!newVaccine.vaccineName || !newVaccine.administeredAt || !newVaccine.nextDueAt) {
+      toast({ title: language === "si" ? "සියලු ක්ෂේත්‍ර පුරවන්න" : language === "ta" ? "அனைத்து புலங்களையும் நிரப்பவும்" : "Fill all fields", variant: "error" });
+      return;
+    }
+    setSavingVaccine(true);
+    try {
+      const created = await createVaccination({
+        petId: pet.id,
+        vaccineName: newVaccine.vaccineName,
+        administeredAt: new Date(newVaccine.administeredAt).toISOString(),
+        nextDueAt: new Date(newVaccine.nextDueAt).toISOString(),
+      });
+      setVaccineRecords((prev) => [created, ...prev]);
+      setNewVaccine({ vaccineName: "", administeredAt: "", nextDueAt: "" });
+      setShowAddVaccine(false);
+      toast({ title: language === "si" ? "එන්නත් වාර්තාව සුරකින ලදී" : language === "ta" ? "தடுப்பூசி பதிவு சேமிக்கப்பட்டது" : "Vaccination record saved", variant: "success" });
+    } catch {
+      toast({ title: language === "si" ? "සුරැකීම අසාර්ථකයි" : language === "ta" ? "சேமிக்க முடியவில்லை" : "Could not save record", variant: "error" });
+    } finally {
+      setSavingVaccine(false);
+    }
+  }
+
+  const vaccineHistory = vaccineRecords.length
+    ? vaccineRecords.map((record) => ({
+        id: record.id,
+        name: record.vaccineName,
+        date: new Date(record.administeredAt).toLocaleDateString(),
+        freq: `${language === "si" ? "ඊළඟ" : language === "ta" ? "அடுத்தது" : "Next"}: ${new Date(record.nextDueAt).toLocaleDateString()}`,
+        status: new Date(record.nextDueAt).getTime() < Date.now() + 14 * 24 * 60 * 60 * 1000 ? ("due" as const) : ("active" as const),
+      }))
+    : pet.vaccinationName
+      ? [{ id: "v1", name: pet.vaccinationName, date: pet.vaccinationDate || "Not provided", freq: pet.vaccinationFrequency || "Annual", status: pet.nextVaccinationDate ? "due" as const : "active" as const }]
+      : [];
 
   const latestBooking = safeRead<BookingSummary | null>(LAST_BOOKING_KEY, null);
   const latestSymptomSubmission = safeRead<{
@@ -225,9 +406,40 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
       <section className={cardClassP5}>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-[15px] font-semibold text-accent">Vaccination History</h3>
-          <button className="text-sm font-semibold text-primary">View All</button>
+          <button className="text-sm font-semibold text-primary" onClick={() => setShowAddVaccine((v) => !v)}>
+            {showAddVaccine ? (language === "si" ? "අවලංගු කරන්න" : language === "ta" ? "ரத்து" : "Cancel") : (language === "si" ? "+ වාර්තාවක් එක් කරන්න" : language === "ta" ? "+ பதிவு சேர்" : "+ Add Record")}
+          </button>
         </div>
+
+        {showAddVaccine && (
+          <div className="mb-4 rounded-2xl border border-primary/30 bg-info-light p-4 dark:bg-primary/10">
+            <Label className="text-sm">{language === "si" ? "එන්නතේ නම" : language === "ta" ? "தடுப்பூசி பெயர்" : "Vaccine name"}</Label>
+            <input className={`mt-1 ${selectClass}`} value={newVaccine.vaccineName} onChange={(e) => setNewVaccine((v) => ({ ...v, vaccineName: e.target.value }))} placeholder="e.g. Rabies Vaccine" list="vaccine-name-options" />
+            <datalist id="vaccine-name-options">
+              {["Rabies Vaccine", "DHPP Vaccine", "Leptospirosis Vaccine", "Bordetella Vaccine", "FVRCP Vaccine", "FeLV Vaccine", "Deworming Treatment", "Flea & Tick Prevention"].map((name) => <option key={name} value={name} />)}
+            </datalist>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label className="text-sm">{language === "si" ? "ලබා දුන් දිනය" : language === "ta" ? "வழங்கிய தேதி" : "Date administered"}</Label>
+                <input type="date" className={`mt-1 ${selectClass}`} value={newVaccine.administeredAt} onChange={(e) => setNewVaccine((v) => ({ ...v, administeredAt: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-sm">{language === "si" ? "ඊළඟ නියමිත දිනය" : language === "ta" ? "அடுத்த தேதி" : "Next due date"}</Label>
+                <input type="date" className={`mt-1 ${selectClass}`} value={newVaccine.nextDueAt} onChange={(e) => setNewVaccine((v) => ({ ...v, nextDueAt: e.target.value }))} />
+              </div>
+            </div>
+            <Button className="mt-3 w-full" onClick={saveVaccineRecord} disabled={savingVaccine}>
+              {savingVaccine ? (language === "si" ? "සුරකිමින්..." : language === "ta" ? "சேமிக்கிறது..." : "Saving...") : (language === "si" ? "වාර්තාව සුරකින්න" : language === "ta" ? "பதிவைச் சேமி" : "Save Record")}
+            </Button>
+          </div>
+        )}
+
         <div className="space-y-3">
+          {vaccineHistory.length === 0 && !showAddVaccine && (
+            <p className="rounded-2xl border border-dashed border-border p-4 text-center text-sm text-accent-subtle dark:border-neutral-700">
+              {language === "si" ? "එන්නත් වාර්තා නොමැත. පළමු වාර්තාව එක් කරන්න." : language === "ta" ? "தடுப்பூசி பதிவுகள் இல்லை. முதல் பதிவைச் சேர்க்கவும்." : "No vaccination records yet. Add the first record to enable smart reminders."}
+            </p>
+          )}
           {vaccineHistory.map((v) => (
             <article key={v.id} className="rounded-2xl border border-border bg-surface p-4 dark:border-neutral-700 dark:bg-neutral-950">
               <div className="flex items-start justify-between gap-3">
@@ -326,7 +538,8 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
   const { clinicId } = useParams();
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
-  const pets = safeRead<Pet[]>(PETS_KEY, fallbackPets);
+  const pets = useFlowPets();
+  const clinics = useClinicDirectory();
   const resolvedClinicId = clinicIdOverride ?? clinicId;
   const clinic = clinics.find((c) => c.id === resolvedClinicId) ?? clinics[0];
   const [selectedSurgeonId, setSelectedSurgeonId] = useState(clinic.surgeons[0]?.id ?? "");
@@ -335,15 +548,28 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
   const [clinicRating, setClinicRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [selectedDay, setSelectedDay] = useState("Mon 12");
+  const [bookingError, setBookingError] = useState("");
   const selectedSurgeon = clinic.surgeons.find((s) => s.id === selectedSurgeonId) ?? clinic.surgeons[0];
   const scheduleDays = ["Mon 12", "Tue 13", "Wed 14", "Thu 15"];
   const consultationFee = 45;
   const adminFee = 5;
   const total = consultationFee + adminFee;
 
+  if (!pets.length) {
+    return (
+      <EmptyPetState
+        title={language === "si" ? "ක්ලිනික් විස්තර" : language === "ta" ? "கிளினிக் விவரம்" : "Clinic Details"}
+        message={language === "si" ? "හමුවීම් වෙන් කිරීමට පෙර සුරතලෙකු එක් කරන්න." : language === "ta" ? "நியமனம் பதிவு செய்வதற்கு முன் ஒரு செல்லப்பிராணியைச் சேர்க்கவும்." : "Add a pet before booking clinic appointments."}
+      />
+    );
+  }
+
   function confirmBooking() {
     if (!selectedSlot || !selectedSurgeon) return;
     const selectedPet = pets.find((p) => p.id === selectedPetId) ?? pets[0];
+    const selectedSlotRecord = selectedSurgeon.slotRecords?.find((slot) => slot.label === selectedSlot);
+    if (!selectedSlotRecord) return;
+
     const summary: BookingSummary = {
       petId: selectedPet.id,
       petName: selectedPet.name,
@@ -352,8 +578,25 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
       surgeonName: selectedSurgeon.name,
       slot: selectedSlot,
     };
-    localStorage.setItem(LAST_BOOKING_KEY, JSON.stringify(summary));
-    navigate("/pets/booking-confirmed");
+
+    setBookingError("");
+    createAppointment({
+      ownerId: getOwnerId(),
+      petId: selectedPet.id,
+      clinicId: clinic.id,
+      surgeonId: selectedSurgeon.id,
+      slotId: selectedSlotRecord.id,
+      status: "pending",
+      notes: "",
+    })
+      .then(() => {
+        localStorage.setItem(LAST_BOOKING_KEY, JSON.stringify(summary));
+        navigate("/pets/booking-confirmed");
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : "Unable to create booking";
+        setBookingError(message);
+      });
   }
 
   const content = (
@@ -440,6 +683,7 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
         </div>
 
         <Button size="xl" className="mt-4 w-full" onClick={confirmBooking} disabled={!selectedSlot}>{language === "si" ? "හමුවීම් වෙන් කරන්න" : language === "ta" ? "நேரம் பதிவு செய்யவும்" : "Book Appointment"}</Button>
+        {bookingError ? <p className="mt-2 text-sm text-red-600 dark:text-red-400">{bookingError}</p> : null}
       </section>
 
       <section className={cardClassP4}>
@@ -491,10 +735,10 @@ export function BookingConfirmationPage() {
       <section className={cardClassP5}>
         <h3 className="text-sm font-semibold uppercase tracking-wide text-accent-faint">{language === "si" ? "හමුවීමේ සාරාංශය" : language === "ta" ? "நியமன சுருக்கம்" : "Appointment Summary"}</h3>
         <div className="mt-3 space-y-2 text-sm text-accent">
-          <p><span className="text-accent-subtle">{language === "si" ? "සුරතලා:" : language === "ta" ? "செல்லப்பிராணி:" : "Pet:"}</span> {booking?.petName ?? "Buddy"}</p>
-          <p><span className="text-accent-subtle">{language === "si" ? "ක්ලිනික්:" : language === "ta" ? "கிளினிக்:" : "Clinic:"}</span> {booking?.clinicName ?? "PetHealth Central Clinic"}</p>
-          <p><span className="text-accent-subtle">{language === "si" ? "ශල්‍ය වෛද්‍යවරයා:" : language === "ta" ? "அறுவை மருத்துவர்:" : "Surgeon:"}</span> {booking?.surgeonName ?? "Dr. James Wilson"}</p>
-          <p><span className="text-accent-subtle">{language === "si" ? "වේලාව:" : language === "ta" ? "நேரம்:" : "Time:"}</span> {booking?.slot ?? "Mon 09:00 AM"}</p>
+          <p><span className="text-accent-subtle">{language === "si" ? "සුරතලා:" : language === "ta" ? "செல்லப்பிராணி:" : "Pet:"}</span> {booking?.petName ?? "—"}</p>
+          <p><span className="text-accent-subtle">{language === "si" ? "ක්ලිනික්:" : language === "ta" ? "கிளினிக்:" : "Clinic:"}</span> {booking?.clinicName ?? "—"}</p>
+          <p><span className="text-accent-subtle">{language === "si" ? "ශල්‍ය වෛද්‍යවරයා:" : language === "ta" ? "அறுவை மருத்துவர்:" : "Surgeon:"}</span> {booking?.surgeonName ?? "—"}</p>
+          <p><span className="text-accent-subtle">{language === "si" ? "වේලාව:" : language === "ta" ? "நேரம்:" : "Time:"}</span> {booking?.slot ?? "—"}</p>
         </div>
       </section>
 
@@ -507,6 +751,7 @@ export function BookingConfirmationPage() {
 
 export function ServiceFeedbackPage() {
   const language = useLanguageStore((state) => state.language);
+  const clinics = useClinicDirectory();
   const [clinicRating, setClinicRating] = useState(0);
   const [feedback, setFeedback] = useState("");
   const [clinicId, setClinicId] = useState(clinics[0].id);
@@ -556,8 +801,17 @@ export function SymptomReportPage() {
   const { petId } = useParams();
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
-  const pets = safeRead<Pet[]>(PETS_KEY, fallbackPets);
+  const pets = useFlowPets();
   const pet = pets.find((p) => p.id === petId) ?? pets[0];
+
+  if (!pet) {
+    return (
+      <EmptyPetState
+        title={language === "si" ? "රෝග ලක්ෂණ වාර්තාව" : language === "ta" ? "அறிகுறி அறிக்கை" : "Symptom Report"}
+        message={language === "si" ? "රෝග ලක්ෂණ වාර්තා කිරීමට පෙර සුරතලෙකු එක් කරන්න." : language === "ta" ? "அறிகுறிகளை அறிக்கையிட முன்னர் ஒரு செல்லப்பிராணியைச் சேர்க்கவும்." : "Add a pet before submitting symptom reports."}
+      />
+    );
+  }
 
   type SeverityKey = "none" | "normal" | "mild" | "moderate" | "severe";
 
@@ -571,6 +825,8 @@ export function SymptomReportPage() {
   const [aiGuided, setAiGuided] = useState(true);
   const [imageDataUrl, setImageDataUrl] = useState("");
   const [formError, setFormError] = useState("");
+  const [durationDays, setDurationDays] = useState(1);
+  const [analyzing, setAnalyzing] = useState(false);
 
   const symptomOptions: Array<{ id: string; label: string }> = [
     { id: "lethargy", label: language === "si" ? "අලසභාවය" : language === "ta" ? "சோர்வு" : "Lethargy" },
@@ -581,6 +837,11 @@ export function SymptomReportPage() {
     { id: "loss-of-appetite", label: language === "si" ? "ආහාර රුචිය අඩුවීම" : language === "ta" ? "பசியின்மை" : "Loss of appetite" },
     { id: "skin-irritation", label: language === "si" ? "සමේ කැසීම" : language === "ta" ? "தோல் எரிச்சல்" : "Skin irritation" },
     { id: "breathing-difficulty", label: language === "si" ? "හුස්ම ගැනීමේ අපහසුතාව" : language === "ta" ? "மூச்சுத்திணறல்" : "Breathing difficulty" },
+    { id: "weight-loss", label: language === "si" ? "බර අඩුවීම" : language === "ta" ? "எடை இழப்பு" : "Weight loss" },
+    { id: "swollen-abdomen", label: language === "si" ? "ඉදිමුණු උදරය" : language === "ta" ? "வீங்கிய வயிறு" : "Swollen abdomen" },
+    { id: "lump-swelling", label: language === "si" ? "ගැටිත්තක් / ඉදිමීමක්" : language === "ta" ? "கட்டி / வீக்கம்" : "Lump or swelling" },
+    { id: "yellow-gums", label: language === "si" ? "කහ පැහැති විදුරුමස්/ඇස්" : language === "ta" ? "மஞ்சள் ஈறுகள்/கண்கள்" : "Yellow gums or eyes" },
+    { id: "fainting", label: language === "si" ? "සිහිසුන් වීම" : language === "ta" ? "மயக்கம்" : "Fainting / collapse" },
   ];
 
   function getSeverityLabel(value: SeverityKey) {
@@ -627,33 +888,88 @@ export function SymptomReportPage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setImageDataUrl(reader.result);
-      }
+      if (typeof reader.result !== "string") return;
+      // Downscale for the multimodal AI call (keeps the payload small)
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 800;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { setImageDataUrl(reader.result as string); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setImageDataUrl(canvas.toDataURL("image/jpeg", 0.8));
+      };
+      img.onerror = () => setImageDataUrl(reader.result as string);
+      img.src = reader.result;
     };
     reader.readAsDataURL(file);
   }
 
-  function analyze() {
+  async function analyze() {
     if (!symptoms.length) {
       setFormError(language === "si" ? "විශ්ලේෂණයට පෙර අවම වශයෙන් එක් පොදු රෝග ලක්ෂණයක් තෝරන්න." : language === "ta" ? "பகுப்பாய்வுக்கு முன் குறைந்தது ஒரு பொதுவான அறிகுறியைத் தேர்ந்தெடுக்கவும்." : "Please select at least one common symptom before analyzing.");
       return;
     }
 
     setFormError("");
-    localStorage.setItem(LAST_SYMPTOM_KEY, JSON.stringify({
+    setAnalyzing(true);
+
+    const vitals = { activityLevel, appetiteLevel, urinationLevel, diarrheaLevel, vomitingLevel };
+    const submission = {
       petId: pet.id,
-      vitals: {
-        activityLevel,
-        appetiteLevel,
-        urinationLevel,
-        diarrheaLevel,
-        vomitingLevel,
-      },
+      vitals,
       symptoms,
       notes,
       imageDataUrl,
-    }));
+      durationDays,
+    };
+
+    const predictionInput = {
+      petId: pet.id,
+      species: pet.species,
+      ageYears: Number.parseFloat(pet.age) || undefined,
+      vitals,
+      symptoms,
+      notes,
+      symptomDurationDays: durationDays,
+    };
+
+    // Owner location for the Vet Discovery & Booking Agent (non-blocking, 4s cap)
+    const ownerLocation = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+      if (!navigator.geolocation) return resolve(null);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(null),
+        { timeout: 4000, maximumAge: 300000 }
+      );
+    });
+
+    let result: PredictionResult | null = null;
+    let agent: AgentResponse | null = null;
+    let offline = false;
+    try {
+      // Full three-agent pipeline in one call
+      agent = await analyzeCase(predictionInput, ownerLocation, imageDataUrl || undefined);
+      result = agent.prediction ?? null;
+    } catch {
+      // Agent pipeline unreachable — fall back to direct ML prediction
+      try {
+        result = await submitPrediction(predictionInput);
+      } catch {
+        offline = true;
+        toast({
+          title: language === "si" ? "AI සේවාව ළඟා විය නොහැක" : language === "ta" ? "AI சேவையை அணுக முடியவில்லை" : "AI service unreachable",
+          description: language === "si" ? "දේශීය ඇස්තමේන්තුවක් පෙන්වයි." : language === "ta" ? "உள்ளூர் மதிப்பீடு காட்டப்படுகிறது." : "Showing an offline estimate instead.",
+          variant: "error",
+        });
+      }
+    }
+
+    localStorage.setItem(LAST_SYMPTOM_KEY, JSON.stringify({ ...submission, result, agent, offline }));
+    setAnalyzing(false);
     navigate(`/pets/prediction/${pet.id}`);
   }
 
@@ -702,10 +1018,20 @@ export function SymptomReportPage() {
               {bowelLevelOptions.map((v) => <option key={v} value={v}>{getSeverityLabel(v)}</option>)}
             </select>
           </div>
-          <div className="sm:col-span-2">
+          <div>
             <Label className="text-sm">{language === "si" ? "වමනය" : language === "ta" ? "வாந்தி" : "Vomiting"}</Label>
             <select className={`mt-1 ${selectClass}`} value={vomitingLevel} onChange={(e) => setVomitingLevel(e.target.value as SeverityKey)}>
               {bowelLevelOptions.map((v) => <option key={v} value={v}>{getSeverityLabel(v)}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label className="text-sm">{language === "si" ? "රෝග ලක්ෂණ පැවති කාලය" : language === "ta" ? "அறிகுறிகள் நீடித்த காலம்" : "Symptom duration"}</Label>
+            <select className={`mt-1 ${selectClass}`} value={durationDays} onChange={(e) => setDurationDays(Number(e.target.value))}>
+              {[1, 2, 3, 5, 7, 14].map((d) => (
+                <option key={d} value={d}>
+                  {d} {language === "si" ? (d === 1 ? "දිනයක්" : "දින") : language === "ta" ? (d === 1 ? "நாள்" : "நாட்கள்") : d === 1 ? "day" : "days"}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -747,31 +1073,134 @@ export function SymptomReportPage() {
         {formError ? (
           <div className="rounded-xl border border-warning-fg/30 bg-warning-light px-3 py-2 text-sm text-warning-fg">{formError}</div>
         ) : null}
-        <Button size="xl" className="w-full" onClick={analyze}>{language === "si" ? "රෝග ලක්ෂණ විශ්ලේෂණය කරන්න" : language === "ta" ? "அறிகுறிகளை பகுப்பாய்வு செய்யவும்" : "Analyze Symptoms"}</Button>
+        <Button size="xl" className="w-full" onClick={analyze} disabled={analyzing}>
+          {analyzing
+            ? (language === "si" ? "විශ්ලේෂණය කරමින්..." : language === "ta" ? "பகுப்பாய்வு நடைபெறுகிறது..." : "Analyzing...")
+            : (language === "si" ? "රෝග ලක්ෂණ විශ්ලේෂණය කරන්න" : language === "ta" ? "அறிகுறிகளை பகுப்பாய்வு செய்யவும்" : "Analyze Symptoms")}
+        </Button>
       </div>
     </PageShell>
   );
 }
 
+type ResultData = {
+  petId: string;
+  symptoms: string[];
+  notes: string;
+  imageDataUrl?: string;
+  durationDays?: number;
+  result?: PredictionResult | null;
+  agent?: AgentResponse | null;
+  offline?: boolean;
+  vitals?: {
+    activityLevel: string;
+    appetiteLevel: string;
+    urinationLevel: string;
+    diarrheaLevel: string;
+    vomitingLevel: string;
+  };
+};
+
 export function PredictionResultPage() {
   const { petId } = useParams();
+  const [searchParams] = useSearchParams();
+  const historyId = searchParams.get("prediction");
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
-  const data = safeRead<{
-    petId: string;
-    symptoms: string[];
-    notes: string;
-    imageDataUrl?: string;
-    vitals?: {
-      activityLevel: string;
-      appetiteLevel: string;
-      urinationLevel: string;
-      diarrheaLevel: string;
-      vomitingLevel: string;
-    };
-  } | null>(LAST_SYMPTOM_KEY, null);
-  const pets = safeRead<Pet[]>(PETS_KEY, fallbackPets);
+  const localData = safeRead<ResultData | null>(LAST_SYMPTOM_KEY, null);
+  // When opened from a saved assessment (?prediction=<id>), load THAT specific
+  // prediction instead of the last-submitted one cached in localStorage.
+  const [historyData, setHistoryData] = useState<ResultData | null>(null);
+  const data = historyData ?? localData;
+  const pets = useFlowPets();
   const pet = pets.find((p) => p.id === petId) ?? pets[0];
+  const result = data?.result ?? null;
+
+  const [agent, setAgent] = useState<AgentResponse | null>(null);
+  const [agentLoading, setAgentLoading] = useState(false);
+
+  useEffect(() => {
+    if (!historyId) return;
+    let active = true;
+    getPrediction(historyId)
+      .then((doc) => {
+        if (!active) return;
+        setHistoryData({
+          petId: doc.pet_id,
+          symptoms: doc.payload?.symptoms ?? [],
+          notes: doc.payload?.notes ?? "",
+          vitals: {
+            activityLevel: doc.payload?.activity_level ?? "normal",
+            appetiteLevel: doc.payload?.appetite_level ?? "normal",
+            urinationLevel: doc.payload?.urine_frequency ?? "normal",
+            diarrheaLevel: doc.payload?.diarrhea_level ?? "none",
+            vomitingLevel: doc.payload?.vomiting_frequency ?? "none",
+          },
+          result: {
+            id: doc.id,
+            risk_level: doc.risk_level,
+            confidence_score: doc.confidence_score,
+            risk_score: doc.risk_score,
+            predicted_diseases: doc.predicted_diseases ?? [],
+            ontology_links: doc.ontology_links ?? [],
+            top_features: doc.top_features ?? [],
+            model_version: doc.model_version,
+            disclaimer: doc.disclaimer ?? "",
+          },
+        });
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [historyId]);
+
+  useEffect(() => {
+    if (!result) return;
+    // /analyze already ran the full three-agent pipeline — use its output
+    if (data?.agent) {
+      setAgent(data.agent);
+      return;
+    }
+    let active = true;
+    setAgentLoading(true);
+
+    const run = (location: { lat: number; lng: number } | null) => {
+      getRecommendations({
+        petId: data?.petId ?? "",
+        riskLevel: result.risk_level,
+        confidenceScore: result.confidence_score,
+        predictedDiseases: result.predicted_diseases,
+        symptoms: data?.symptoms ?? [],
+        notes: data?.notes ?? "",
+        predictionId: result.id ?? undefined,
+        ownerLocation: location,
+      })
+        .then((response) => { if (active) setAgent(response); })
+        .catch(() => undefined)
+        .finally(() => { if (active) setAgentLoading(false); });
+    };
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => run({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => run(null),
+        { timeout: 4000, maximumAge: 300000 }
+      );
+    } else {
+      run(null);
+    }
+
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result?.id]);
+
+  if (!pet) {
+    return (
+      <EmptyPetState
+        title={language === "si" ? "පුරෝකථන ප්‍රතිඵලය" : language === "ta" ? "கணிப்பு முடிவு" : "Prediction Result"}
+        message={language === "si" ? "පුරෝකථන වාර්තා බැලීමට පෙර සුරතලෙකු එක් කරන්න." : language === "ta" ? "கணிப்பு அறிக்கைகளைப் பார்க்க முன்னர் ஒரு செல்லப்பிராணியைச் சேர்க்கவும்." : "Add a pet before viewing prediction reports."}
+      />
+    );
+  }
   const symptomCount = data?.symptoms?.length ?? 0;
   const severityScore = {
     none: 0,
@@ -802,6 +1231,11 @@ export function PredictionResultPage() {
       "loss-of-appetite": { en: "Loss of appetite", si: "ආහාර රුචිය අඩුවීම", ta: "பசியின்மை" },
       "skin-irritation": { en: "Skin irritation", si: "සමේ කැසීම", ta: "தோல் எரிச்சல்" },
       "breathing-difficulty": { en: "Breathing difficulty", si: "හුස්ම ගැනීමේ අපහසුතාව", ta: "மூச்சுத்திணறல்" },
+      "weight-loss": { en: "Weight loss", si: "බර අඩුවීම", ta: "எடை இழப்பு" },
+      "swollen-abdomen": { en: "Swollen abdomen", si: "ඉදිමුණු උදරය", ta: "வீங்கிய வயிறு" },
+      "lump-swelling": { en: "Lump or swelling", si: "ගැටිත්තක් / ඉදිමීමක්", ta: "கட்டி / வீக்கம்" },
+      "yellow-gums": { en: "Yellow gums or eyes", si: "කහ පැහැති විදුරුමස්/ඇස්", ta: "மஞ்சள் ஈறுகள்/கண்கள்" },
+      "fainting": { en: "Fainting / collapse", si: "සිහිසුන් වීම", ta: "மயக்கம்" },
     };
 
     const resolved = map[symptomKey];
@@ -818,19 +1252,48 @@ export function PredictionResultPage() {
     (data?.vitals ? severityScore[normalizeSeverity(data.vitals.urinationLevel)] : 0) +
     (data?.vitals ? severityScore[normalizeSeverity(data.vitals.diarrheaLevel)] : 0) +
     (data?.vitals ? severityScore[normalizeSeverity(data.vitals.vomitingLevel)] : 0);
-  const riskScore = Math.min(98, 30 + symptomCount * 9 + vitalsScore);
-  const riskLevel = riskScore >= 75 ? "HIGH RISK" : riskScore >= 50 ? "MODERATE RISK" : "LOW RISK";
-  const confidence = riskLevel === "HIGH RISK" ? 88 : riskLevel === "MODERATE RISK" ? 74 : 62;
-  const finding = riskLevel === "HIGH RISK"
-    ? (language === "si" ? "උග්‍ර ජීරණ අවදානම" : language === "ta" ? "தீவிர செரிமான அபாயம்" : "Acute Digestive Risk")
+
+  // Prefer the real ML prediction; fall back to the legacy local heuristic when offline
+  const localRiskScore = Math.min(98, 30 + symptomCount * 9 + vitalsScore);
+  const riskScore = result ? Math.round(result.risk_score * 100) : localRiskScore;
+  const riskLevel = result
+    ? result.risk_level === "high" ? "HIGH RISK" : result.risk_level === "medium" ? "MODERATE RISK" : "LOW RISK"
+    : localRiskScore >= 75 ? "HIGH RISK" : localRiskScore >= 50 ? "MODERATE RISK" : "LOW RISK";
+  const riskWord = riskLevel === "HIGH RISK"
+    ? (language === "si" ? "ඉහළ අවදානම" : language === "ta" ? "அதிக அபாயம்" : "High Risk")
     : riskLevel === "MODERATE RISK"
-      ? (language === "si" ? "ආසාත්මික රෝග ලක්ෂණ රටාව" : language === "ta" ? "அழற்சி அறிகுறி வடிவம்" : "Inflammatory Symptom Pattern")
-      : (language === "si" ? "සුළු හැසිරීම් වෙනස්වීම" : language === "ta" ? "இலகு நடத்தை மாற்றம்" : "Mild Behavioral Variation");
+      ? (language === "si" ? "මධ්‍යම අවදානම" : language === "ta" ? "நடுத்தர அபாயம்" : "Moderate Risk")
+      : (language === "si" ? "අඩු අවදානම" : language === "ta" ? "குறைந்த அபாயம்" : "Low Risk");
+  const confidence = result
+    ? Math.round(result.confidence_score * 100)
+    : riskLevel === "HIGH RISK" ? 88 : riskLevel === "MODERATE RISK" ? 74 : 62;
+  const topFeatures = result?.top_features ?? [];
+  const maxFeatureWeight = Math.max(...topFeatures.map((f) => Math.abs(f.weight)), 0.0001);
+  const topDisease = result?.predicted_diseases?.[0]?.disease_localized || result?.predicted_diseases?.[0]?.disease;
+  const finding = topDisease
+    ? topDisease
+    : riskLevel === "HIGH RISK"
+      ? (language === "si" ? "උග්‍ර ජීරණ අවදානම" : language === "ta" ? "தீவிர செரிமான அபாயம்" : "Acute Digestive Risk")
+      : riskLevel === "MODERATE RISK"
+        ? (language === "si" ? "ආසාත්මික රෝග ලක්ෂණ රටාව" : language === "ta" ? "அழற்சி அறிகுறி வடிவம்" : "Inflammatory Symptom Pattern")
+        : (language === "si" ? "සුළු හැසිරීම් වෙනස්වීම" : language === "ta" ? "இலகு நடத்தை மாற்றம்" : "Mild Behavioral Variation");
   const remedies = riskLevel === "HIGH RISK"
-    ? ["Prioritize hydration in small frequent amounts.", "Avoid introducing new food until vet review.", "Monitor stool and vomiting frequency every 4 hours."]
+    ? (language === "si"
+        ? ["කුඩා ප්‍රමාණවලින් නිතර ජලය ලබා දීමට ප්‍රමුඛත්වය දෙන්න.", "වෙට් පරීක්ෂාව තෙක් නව ආහාර හඳුන්වා නොදෙන්න.", "සෑම පැය 4කට වරක් මළ සහ වමන වාර ගණන නිරීක්ෂණය කරන්න."]
+        : language === "ta"
+          ? ["சிறிய அளவில் அடிக்கடி நீர் வழங்குவதற்கு முன்னுரிமை கொடுங்கள்.", "வெட் பரிசோதனை வரை புதிய உணவை அறிமுகப்படுத்த வேண்டாம்.", "ஒவ்வொரு 4 மணிநேரமும் மலம் மற்றும் வாந்தியை கண்காணிக்கவும்."]
+          : ["Prioritize hydration in small frequent amounts.", "Avoid introducing new food until vet review.", "Monitor stool and vomiting frequency every 4 hours."])
     : riskLevel === "MODERATE RISK"
-      ? ["Offer bland food in small portions.", "Maintain rest and reduce physical strain.", "Track appetite and activity changes for 24 hours."]
-      : ["Maintain normal hydration and balanced meals.", "Observe symptoms for 24-48 hours.", "Keep pet in a low-stress environment and monitor behavior."];
+      ? (language === "si"
+          ? ["සරල ආහාර කුඩා ප්‍රමාණවලින් ලබා දෙන්න.", "විවේකය පවත්වා ශාරීරික වෙහෙස අඩු කරන්න.", "පැය 24ක් ආහාර රුචිය සහ ක්‍රියාකාරීත්ව වෙනස්කම් නිරීක්ෂණය කරන්න."]
+          : language === "ta"
+            ? ["எளிய உணவை சிறிய அளவில் வழங்கவும்.", "ஓய்வை பராமரித்து உடல் அழுத்தத்தை குறைக்கவும்.", "24 மணிநேரம் பசி மற்றும் செயல்பாட்டு மாற்றங்களை கண்காணிக்கவும்."]
+            : ["Offer bland food in small portions.", "Maintain rest and reduce physical strain.", "Track appetite and activity changes for 24 hours."])
+      : language === "si"
+        ? ["සාමාන්‍ය ජලය පානය සහ සමබර ආහාර පවත්වන්න.", "පැය 24-48ක් රෝග ලක්ෂණ නිරීක්ෂණය කරන්න.", "සුරතලා අඩු ආතති පරිසරයක තබා හැසිරීම නිරීක්ෂණය කරන්න."]
+        : language === "ta"
+          ? ["இயல்பான நீர் அருந்துதலும் சமச்சீர் உணவும் பராமரிக்கவும்.", "24-48 மணிநேரம் அறிகுறிகளை கவனிக்கவும்.", "குறைந்த மன அழுத்த சூழலில் வைத்து நடத்தையை கண்காணிக்கவும்."]
+          : ["Maintain normal hydration and balanced meals.", "Observe symptoms for 24-48 hours.", "Keep pet in a low-stress environment and monitor behavior."];
   const vetAdvice = riskLevel === "HIGH RISK"
     ? (language === "si" ? "වහාම වෙට් උපදේශනයක් නිර්දේශ කරයි." : language === "ta" ? "உடனடி வெட் ஆலோசனை பரிந்துரைக்கப்படுகிறது." : "Immediate veterinary consultation recommended.")
     : riskLevel === "MODERATE RISK"
@@ -859,13 +1322,88 @@ export function PredictionResultPage() {
 
   return (
     <PageShell title={language === "si" ? "පුරෝකථන ප්‍රතිඵලය" : language === "ta" ? "கணிப்பு முடிவு" : "Prediction Result"} rightAction={<button onClick={shareReport}><Share2 className="h-5 w-5 text-accent" /></button>}>
+      {data?.offline ? (
+        <div className="rounded-xl border border-warning-fg/30 bg-warning-light px-3 py-2 text-sm text-warning-fg">
+          {language === "si" ? "AI සේවාව ළඟා විය නොහැකි විය — මෙය දේශීය ඇස්තමේන්තුවකි." : language === "ta" ? "AI சேவையை அணுக முடியவில்லை — இது உள்ளூர் மதிப்பீடு." : "AI service was unreachable — this is an offline estimate, not a model prediction."}
+        </div>
+      ) : null}
+
       <section className={`${cardClassP6} text-center`}>
         <img src={pet.photoDataUrl || petBuddyImage} alt={pet.name} className="mx-auto h-28 w-28 rounded-full border-4 border-surface object-cover" />
         <h2 className="mt-4 text-2xl font-semibold text-accent">{finding}</h2>
-        <Badge variant={riskLevel === "HIGH RISK" ? "danger" : riskLevel === "MODERATE RISK" ? "warning" : "success"} className="mt-3">{riskLevel}</Badge>
-        <p className="mt-2 text-sm text-accent-subtle">{language === "si" ? "රෝග ලකුණු:" : language === "ta" ? "நோய் மதிப்பு:" : "Disease Score:"} <span className="font-semibold text-accent">{riskScore}/100</span></p>
-        <p className="mt-1 text-sm text-accent-subtle">{confidence}% {language === "si" ? "විශ්වාස ලකුණු" : language === "ta" ? "நம்பகத்தன்மை மதிப்பெண்" : "Confidence Score"}</p>
+        <Badge variant={riskLevel === "HIGH RISK" ? "danger" : riskLevel === "MODERATE RISK" ? "warning" : "success"} className="mt-3">{riskWord}</Badge>
+        <p className="mt-2 text-sm text-accent-subtle">{language === "si" ? "අවදානම් ලකුණු:" : language === "ta" ? "அபாய மதிப்பு:" : "Risk Score:"} <span className="font-semibold text-accent">{riskScore}/100</span></p>
+        <div className="mx-auto mt-2 h-2 w-48 overflow-hidden rounded-full bg-surface-tertiary dark:bg-neutral-800">
+          <div
+            className={`h-full rounded-full ${riskLevel === "HIGH RISK" ? "bg-danger-fg" : riskLevel === "MODERATE RISK" ? "bg-warning-fg" : "bg-success-fg"}`}
+            style={{ width: `${Math.min(100, riskScore)}%` }}
+          />
+        </div>
+        <p className="mt-2 text-sm font-medium text-accent">
+          {language === "si" ? "අවදානම් මට්ටම" : language === "ta" ? "அபாய நிலை" : "Risk level"}: <span className={riskLevel === "HIGH RISK" ? "text-danger-fg" : riskLevel === "MODERATE RISK" ? "text-warning-fg" : "text-success-fg"}>{riskWord}</span>
+        </p>
+        {result ? (
+          <p className="mt-1 text-[11px] uppercase tracking-wide text-accent-faint">
+            {language === "si" ? "ආකෘතිය" : language === "ta" ? "மாதிரி" : "Model"}: {result.model_version} · {language === "si" ? "විශ්වාසය" : language === "ta" ? "நம்பகம்" : "confidence"} {confidence}%
+          </p>
+        ) : null}
       </section>
+
+      {result?.predicted_diseases?.length ? (
+        <section className={cardClassP5}>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-accent">{language === "si" ? "පුරෝකථනය කළ තත්ත්ව" : language === "ta" ? "கணிக்கப்பட்ட நிலைமைகள்" : "Predicted Conditions"}</h3>
+          <div className="mt-3 space-y-3">
+            {result.predicted_diseases.map((item) => (
+              <div key={item.disease}>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium text-accent">{item.disease_localized || item.disease}</span>
+                  <span className="text-accent-subtle">{Math.round(item.probability * 100)}%</span>
+                </div>
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-tertiary dark:bg-neutral-800">
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${Math.round(item.probability * 100)}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {result?.ontology_links?.length ? (
+        <section className={cardClassP5}>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-accent">{language === "si" ? "AI තර්කනය — රෝග ලක්ෂණ සම්බන්ධතා" : language === "ta" ? "AI காரணம் — அறிகுறி இணைப்புகள்" : "Why — Symptom-Disease Links"}</h3>
+          <ul className="mt-3 space-y-2 text-sm text-accent-subtle">
+            {result.ontology_links.slice(0, 5).map((link) => (
+              <li key={`${link.symptom}-${link.disease}`} className="flex items-center justify-between gap-2">
+                <span><span className="font-medium text-accent">{link.symptom_localized || link.symptom}</span> → {link.disease_localized || link.disease}</span>
+                <Badge variant="info">{Math.round(link.weight * 100)}%</Badge>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {topFeatures.length ? (
+        <section className={cardClassP5}>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-accent">{language === "si" ? "ප්‍රධාන බලපෑම් සාධක" : language === "ta" ? "முக்கிய தாக்க காரணிகள்" : "Key Influencing Factors"}</h3>
+          <p className="mt-1 text-xs text-accent-faint">{language === "si" ? "ඉහළම පුරෝකථනයට වඩාත් බලපෑ ඔබගේ වාර්තාවේ යෙදුම්. කොළ පැහැය එය තහවුරු කරයි; අළු පැහැය එයට එරෙහිව බර තබයි." : language === "ta" ? "மேல் கணிப்பை மிகவும் பாதித்த உங்கள் அறிக்கையின் சொற்கள். பச்சை அதை ஆதரிக்கிறது; சாம்பல் அதற்கு எதிராக உள்ளது." : "Terms from your report that most influenced the top prediction. Green supports it; grey weighs against it."}</p>
+          <div className="mt-3 space-y-3">
+            {topFeatures.map((f) => (
+              <div key={f.feature}>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium text-accent">{f.feature}</span>
+                  <span className={f.weight >= 0 ? "text-success-fg" : "text-accent-subtle"}>{f.weight >= 0 ? "+" : "−"}{Math.abs(f.weight).toFixed(2)}</span>
+                </div>
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-tertiary dark:bg-neutral-800">
+                  <div
+                    className={`h-full rounded-full ${f.weight >= 0 ? "bg-success-fg" : "bg-neutral-400 dark:bg-neutral-500"}`}
+                    style={{ width: `${Math.round((Math.abs(f.weight) / maxFeatureWeight) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className={cardClassP5}>
         <h3 className="text-sm font-semibold uppercase tracking-wide text-accent">{language === "si" ? "විශ්ලේෂණය කළ රෝග ලක්ෂණ" : language === "ta" ? "பகுப்பாய்வு செய்யப்பட்ட அறிகுறிகள்" : "Analyzed Symptoms"}</h3>
@@ -891,6 +1429,101 @@ export function PredictionResultPage() {
           <span>{vetAdvice}</span>
         </div>
       </section>
+
+      {result ? (
+        <section className={cardClassP5}>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-accent">{language === "si" ? "AI නියෝජිත මඟපෙන්වීම" : language === "ta" ? "AI முகவர் வழிகாட்டுதல்" : "AI Agent Guidance"}</h3>
+            {agent?.degraded ? <Badge variant="warning">{language === "si" ? "නීති මාදිලිය" : language === "ta" ? "விதி முறை" : "Rule-based mode"}</Badge> : null}
+          </div>
+
+          {agentLoading ? (
+            <p className="mt-3 text-sm text-accent-subtle">{language === "si" ? "මඟපෙන්වීම ජනනය කරමින්..." : language === "ta" ? "வழிகாட்டுதல் உருவாக்கப்படுகிறது..." : "Generating personalized guidance..."}</p>
+          ) : agent ? (
+            <div className="mt-3 space-y-3">
+              {agent.urgency_hours != null ? (
+                <div className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${agent.urgency_hours <= 24 ? "border-danger-fg/30 bg-danger-light text-danger-fg" : agent.urgency_hours <= 72 ? "border-warning-fg/30 bg-warning-light text-warning-fg" : "border-success-fg/30 bg-success-light text-success-fg"}`}>
+                  <AlertTriangle className="mt-0.5 h-4 w-4" />
+                  <span>
+                    {language === "si" ? `පැය ${agent.urgency_hours}ක් ඇතුළත පශු වෛද්‍ය උපදෙස් ලබාගන්න.` : language === "ta" ? `${agent.urgency_hours} மணிநேரத்திற்குள் கால்நடை ஆலோசனை பெறவும்.` : `Seek veterinary advice within ${agent.urgency_hours} hours.`}
+                  </span>
+                </div>
+              ) : null}
+
+              {agent.image_findings ? (
+                <div className="rounded-xl border border-info/40 bg-info-light px-3 py-2 text-sm text-accent-muted dark:border-info/30 dark:bg-primary/10 dark:text-neutral-200">
+                  <span className="font-medium text-accent dark:text-white">{language === "si" ? "ඡායාරූප විශ්ලේෂණය: " : language === "ta" ? "புகைப்பட பகுப்பாய்வு: " : "Photo analysis: "}</span>
+                  {agent.image_findings}
+                </div>
+              ) : null}
+
+              {agent.recommendations.map((rec, index) => (
+                <div key={index} className="rounded-xl border border-border p-3 text-sm dark:border-neutral-700">
+                  <div className="flex items-center gap-2">
+                    <Badge variant={rec.type === "emergency" ? "danger" : rec.type === "vet_visit" ? "warning" : rec.type === "vaccination" ? "info" : "success"}>
+                      {rec.type.replace("_", " ")}
+                    </Badge>
+                    {rec.title ? <span className="font-medium text-accent">{rec.title}</span> : null}
+                  </div>
+                  <p className="mt-2 text-accent-subtle">{rec.message}</p>
+                </div>
+              ))}
+
+              {agent.clinic_suggestions?.length ? (
+                <div>
+                  <p className="text-sm font-medium text-accent">{language === "si" ? "යෝජිත ක්ලිනික්" : language === "ta" ? "பரிந்துரைக்கப்பட்ட கிளினிக்குகள்" : "Suggested clinics"}</p>
+                  <div className="mt-2 space-y-2">
+                    {agent.clinic_suggestions.map((clinic) => (
+                      <button key={clinic.id} onClick={() => navigate("/pets?tab=clinics")} className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm transition hover:border-primary ${clinic.recommended ? "border-primary bg-info-light dark:bg-primary/10" : "border-border dark:border-neutral-700"}`}>
+                        <span>
+                          <span className="flex items-center gap-2 font-medium text-accent">
+                            {clinic.name}
+                            {clinic.recommended ? <Badge variant="info">{language === "si" ? "නිර්දේශිත" : language === "ta" ? "பரிந்துரைக்கப்பட்டது" : "Recommended"}</Badge> : null}
+                            {clinic.external ? <Badge variant="outline">{language === "si" ? "වේදිකාවේ නොමැත" : language === "ta" ? "தளத்தில் இல்லை" : "Not on platform"}</Badge> : null}
+                          </span>
+                          <span className="block text-xs text-accent-subtle">{clinic.address}{clinic.distance_km != null ? ` · ${clinic.distance_km.toFixed(1)} km` : ""}</span>
+                          {clinic.recommended && clinic.match_reason ? <span className="block text-xs font-medium text-primary">{clinic.match_reason}</span> : null}
+                          {clinic.surgeon ? <span className="block text-xs text-accent-subtle">{clinic.surgeon}</span> : null}
+                        </span>
+                        <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {agent.explanation ? (
+                <details className="rounded-xl border border-border p-3 text-sm dark:border-neutral-700">
+                  <summary className="cursor-pointer font-medium text-accent">{language === "si" ? "AI තීරණය කළ ආකාරය" : language === "ta" ? "AI எப்படி முடிவு செய்தது" : "How the AI decided"}</summary>
+                  {agent.agents?.length ? (
+                    <div className="mt-2 space-y-1.5">
+                      {agent.agents.map((step, index) => (
+                        <div key={index} className="flex items-start gap-2 rounded-lg bg-surface-secondary px-2.5 py-1.5 dark:bg-neutral-800">
+                          <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-white">{index + 1}</span>
+                          <span className="min-w-0">
+                            <span className="block text-[12px] font-semibold text-accent">{step.agent}</span>
+                            <span className="block truncate text-[11px] text-accent-subtle">{step.summary}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <p className="mt-2 text-accent-subtle">{agent.explanation}</p>
+                  {agent.agent_trace?.length ? (
+                    <ul className="mt-2 space-y-1 text-xs text-accent-faint">
+                      {agent.agent_trace.map((step, index) => <li key={index}>• {step}</li>)}
+                    </ul>
+                  ) : null}
+                </details>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-accent-subtle">{language === "si" ? "නියෝජිත සේවාව නොමැත." : language === "ta" ? "முகவர் சேவை கிடைக்கவில்லை." : "Agent guidance unavailable right now."}</p>
+          )}
+        </section>
+      ) : null}
+
+      <Disclaimer />
 
       {data?.imageDataUrl ? (
         <section className={cardClassP5}>

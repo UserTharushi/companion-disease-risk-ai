@@ -9,6 +9,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Alert } from "../components/ui/alert";
+import { forgotPassword } from "../lib/auth-api";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email address"),
@@ -30,14 +31,7 @@ export function ForgotPasswordPage() {
     try {
       setErrorMessage(null);
       setIsSubmitting(true);
-      const API = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
-      const res = await fetch(`${API}/api/auth/forgot-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: values.email }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.message || "Request failed");
+      await forgotPassword({ email: values.email });
       setEmailSent(true);
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : "Something went wrong");

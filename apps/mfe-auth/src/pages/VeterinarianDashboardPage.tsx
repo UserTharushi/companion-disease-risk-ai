@@ -1,150 +1,77 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getProfileNameForRole, getVerifiedRole, logout } from "../lib/session";
+import { getAccessToken, getProfileNameForRole, getVerifiedRole, logout, saveProfileName } from "../lib/session";
+import { t, useLanguageStore } from "../lib/language";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import { Separator } from "../components/ui/separator";
+import { Dropzone } from "../components/ui/dropzone";
 import { ThemeSwitcher } from "../components/ThemeSwitcher";
 import { cn } from "../lib/utils";
+import { toast } from "../lib/use-toast";
+import { listAllAppointments, listClinics, updateAppointment } from "../lib/clinic-api";
+import { listAllPets, type BackendPet } from "../lib/pet-api";
+import { listVaccinations } from "../lib/vaccination-api";
+import { getPredictionHistory } from "../lib/prediction-api";
+import { getMyProfile, updateMyProfile } from "../lib/auth-api";
+import type { Appointment as BackendAppointment, VetClinic } from "@companion-ai/shared-types";
 import {
   Activity,
-  Building2,
+  AlertTriangle,
+  Calendar,
+  Check,
   ClipboardCheck,
+  Clock,
   LayoutDashboard,
   LogOut,
   Menu,
-  ShieldCheck,
+  PawPrint,
+  Search,
   Sparkles,
+  Stethoscope,
+  Syringe,
   User,
+  X,
 } from "lucide-react";
 
-const PET_OWNER_APPOINTMENTS_KEY = "companion_ai_pet_owner_appointments";
-const PET_OWNER_SURGEON_INQUIRIES_KEY = "companion_ai_pet_owner_surgeon_inquiries";
 const VET_PROFILE_KEY = "companion_ai_vet_profile";
 
-const SAMPLE_APPOINTMENTS: Appointment[] = [
-  {
-    id: "sample-appt-1",
-    clinicId: "clinic-1",
-    clinicName: "PetCare Main Clinic",
-    surgeonId: "surgeon-1",
-    surgeonName: "Dr. Asela",
-    time: "09:30 AM",
-    petName: "Buddy",
-    petType: "Dog",
-    petId: "1",
-    ownerName: "John Smith",
-    ownerPhone: "+94 77 123 4567",
-    status: "pending",
-    consultationType: "General Consultation",
-    notes: "Initial check",
-    bookedAt: new Date().toISOString(),
-  },
-  {
-    id: "sample-appt-2",
-    clinicId: "clinic-1",
-    clinicName: "PetCare Main Clinic",
-    surgeonId: "surgeon-1",
-    surgeonName: "Dr. Asela",
-    time: "11:00 AM",
-    petName: "Max",
-    petType: "Dog",
-    petId: "2",
-    ownerName: "Sarah Johnson",
-    ownerPhone: "+94 76 987 6543",
-    status: "confirmed",
-    consultationType: "Follow-up",
-    notes: "Skin review",
-    bookedAt: new Date().toISOString(),
-  },
-];
+type VetSection = "overview" | "approvals" | "follow-up-reminders" | "patients" | "profile";
 
-const SAMPLE_INQUIRIES: SurgeonInquiryRecord[] = [
-  {
-    id: "sample-inquiry-1",
-    clinicId: "clinic-1",
-    clinicName: "PetCare Main Clinic",
-    surgeonId: "surgeon-1",
-    surgeonName: "Dr. Asela",
-    petId: "1",
-    petName: "Buddy",
-    message: "Can we move tomorrow appointment to afternoon?",
-    status: "open",
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "sample-inquiry-2",
-    clinicId: "clinic-1",
-    clinicName: "PetCare Main Clinic",
-    surgeonId: "surgeon-1",
-    surgeonName: "Dr. Asela",
-    petId: "2",
-    petName: "Max",
-    message: "Need clarification on diet for this week.",
-    status: "open",
-    createdAt: new Date(Date.now() - 3600 * 1000).toISOString(),
-  },
-];
-
-interface Appointment {
+interface AppointmentRow {
   id: string;
-  clinicId: string;
+  petId: string;
+  petName: string;
+  species: string;
   clinicName: string;
-  surgeonId: string;
   surgeonName: string;
-  time: string;
-  slot?: string;
-  petName: string;
-  petType?: string;
-  petId?: string;
-  ownerName: string;
-  ownerPhone?: string;
-  status: "pending" | "confirmed" | "completed" | "cancelled";
-  consultationType: string;
+  datetime: string | null;
+  status: BackendAppointment["status"];
   notes?: string;
-  bookedAt?: string;
 }
 
-interface PatientRecord {
+interface PatientRow {
   id: string;
   petName: string;
-  petType: string;
+  species: string;
   breed: string;
-  ownerName: string;
-  lastVisitDate: string;
-  vaccineStatus: string;
-  allergies: string[];
-  conditions: string[];
+  ageYears: number;
+  ownerId: string;
+  vaccineStatus: "up-to-date" | "due-soon" | "overdue" | "none";
+  nextVaccine?: { name: string; dueAt: string } | null;
+  lastRisk?: { level: string; disease: string; at: string } | null;
 }
 
-interface FollowUp {
+interface FollowUpRow {
   id: string;
   petName: string;
   type: string;
-  dueDate: string;
-  priority: "low" | "medium" | "high";
-}
-
-interface Message {
-  id: string;
-  fromName: string;
-  subject: string;
-  timestamp: string;
-  isRead: boolean;
-}
-
-interface SurgeonInquiryRecord {
-  id: string;
-  clinicId: string;
-  clinicName: string;
-  surgeonId: string;
-  surgeonName: string;
-  petId: string;
-  petName: string;
-  message: string;
-  status: "open" | "replied";
-  createdAt: string;
+  detail: string;
+  priority: "medium" | "high";
 }
 
 interface VetProfile {
@@ -156,253 +83,283 @@ interface VetProfile {
   photoDataUrl: string;
 }
 
-type VetSection = "overview" | "approvals" | "follow-up-reminders" | "patients" | "inquiries" | "profile";
+function loadJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
-const CALENDAR_MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-
-const CALENDAR_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DUE_SOON_MS = 14 * 24 * 60 * 60 * 1000;
+const RISK_RECENT_MS = 14 * 24 * 60 * 60 * 1000;
+const ENRICH_LIMIT = 30;
 
 export function VeterinarianDashboardPage() {
   const navigate = useNavigate();
+  const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
   const role = getVerifiedRole();
-  const defaultVetName = getProfileNameForRole("veterinarian", "Dr. Veterinarian");
+  const defaultVetName = getProfileNameForRole("veterinarian", tr("unnamedVet"));
 
-  const [appointments, setAppointments] = useState<Appointment[]>(() => {
-    const raw = localStorage.getItem(PET_OWNER_APPOINTMENTS_KEY);
-    if (!raw) return SAMPLE_APPOINTMENTS;
+  const [activeSection, setActiveSection] = useState<VetSection>("overview");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
 
-    try {
-      const parsed = JSON.parse(raw) as Appointment[];
-      const normalized = Array.isArray(parsed)
-        ? parsed.map((appointment) => ({
-            ...appointment,
-            time: appointment.time || appointment.slot || "TBD",
-            consultationType: appointment.consultationType || "General Consultation",
-          }))
-        : [];
-      return normalized.length > 0 ? normalized : SAMPLE_APPOINTMENTS;
-    } catch {
-      return SAMPLE_APPOINTMENTS;
-    }
-  });
-
-  const [patients] = useState<PatientRecord[]>([
-    {
-      id: "1",
-      petName: "Buddy",
-      petType: "Dog",
-      breed: "Golden Retriever",
-      ownerName: "John Smith",
-      lastVisitDate: "March 15, 2026",
-      vaccineStatus: "Up to date",
-      allergies: [],
-      conditions: [],
-    },
-    {
-      id: "2",
-      petName: "Max",
-      petType: "Dog",
-      breed: "German Shepherd",
-      ownerName: "Sarah Johnson",
-      lastVisitDate: "March 10, 2026",
-      vaccineStatus: "Overdue",
-      allergies: ["Chicken"],
-      conditions: ["Skin sensitivity"],
-    },
-  ]);
-
-  const [followUps] = useState<FollowUp[]>([
-    {
-      id: "1",
-      petName: "Max",
-      type: "Blood test results review",
-      dueDate: "March 26, 2026",
-      priority: "high",
-    },
-    {
-      id: "2",
-      petName: "Luna",
-      type: "Post-surgery wound check",
-      dueDate: "March 28, 2026",
-      priority: "high",
-    },
-    {
-      id: "3",
-      petName: "Buddy",
-      type: "Chronic condition monitoring",
-      dueDate: "April 5, 2026",
-      priority: "medium",
-    },
-  ]);
-
-  const [surgeonInquiries, setSurgeonInquiries] = useState<SurgeonInquiryRecord[]>(() => {
-    const raw = localStorage.getItem(PET_OWNER_SURGEON_INQUIRIES_KEY);
-    if (!raw) return SAMPLE_INQUIRIES;
-    try {
-      const parsed = JSON.parse(raw) as SurgeonInquiryRecord[];
-      if (!Array.isArray(parsed) || parsed.length === 0) return SAMPLE_INQUIRIES;
-      return parsed;
-    } catch {
-      return SAMPLE_INQUIRIES;
-    }
-  });
+  // ── Live data ──
+  const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
+  const [patients, setPatients] = useState<PatientRow[]>([]);
 
   const [vetProfile, setVetProfile] = useState<VetProfile>(() => {
-    const raw = localStorage.getItem(VET_PROFILE_KEY);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as Partial<VetProfile>;
-        return {
-          name: parsed.name ?? defaultVetName,
-          email: parsed.email ?? "",
-          phone: parsed.phone ?? "",
-          specialization: parsed.specialization ?? "",
-          bio: parsed.bio ?? "",
-          photoDataUrl: parsed.photoDataUrl ?? "",
-        };
-      } catch {
-        // ignore and use defaults
-      }
-    }
+    const stored = loadJson<Partial<VetProfile> | null>(VET_PROFILE_KEY, null);
     return {
-      name: defaultVetName,
-      email: "",
-      phone: "",
-      specialization: "",
-      bio: "",
-      photoDataUrl: "",
+      name: stored?.name ?? defaultVetName,
+      email: stored?.email ?? "",
+      phone: stored?.phone ?? "",
+      specialization: stored?.specialization ?? "",
+      bio: stored?.bio ?? "",
+      photoDataUrl: stored?.photoDataUrl ?? "",
     };
   });
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
 
-  const [selectedPatient, setSelectedPatient] = useState<PatientRecord | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<VetSection>("overview");
-  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
-  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+  // The server (auth-service User record) is the source of truth for the vet's
+  // profile — admin provisions the account with real details. localStorage is
+  // only a render cache so the header/avatar paint instantly on reload.
+  useEffect(() => {
+    let active = true;
+    const token = getAccessToken();
+    if (!token) return;
+
+    setProfileLoading(true);
+    getMyProfile(token)
+      .then((remote) => {
+        if (!active) return;
+        const normalized: VetProfile = {
+          name: remote.displayName || defaultVetName,
+          email: remote.email || "",
+          phone: remote.phoneNumber || "",
+          specialization: remote.specialization || "",
+          bio: remote.bio || "",
+          photoDataUrl: remote.photoURL || "",
+        };
+        setVetProfile(normalized);
+        localStorage.setItem(VET_PROFILE_KEY, JSON.stringify(normalized));
+        saveProfileName(normalized.name, "veterinarian");
+      })
+      .catch((err: Error) => {
+        if (!active) return;
+        toast({ title: tr("failedLoadProfile"), description: err.message, variant: "error" });
+      })
+      .finally(() => {
+        if (active) setProfileLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function loadLiveData() {
+    setLoading(true);
+    try {
+      const [appts, clinics, pets] = await Promise.all([
+        listAllAppointments().catch(() => [] as BackendAppointment[]),
+        listClinics().catch(() => [] as VetClinic[]),
+        listAllPets().catch(() => [] as BackendPet[]),
+      ]);
+
+      const clinicById = new Map(clinics.map((clinic) => [clinic.id, clinic]));
+      const surgeonById = new Map(clinics.flatMap((clinic) => clinic.surgeons.map((surgeon) => [surgeon.id, surgeon] as const)));
+      const slotById = new Map(
+        clinics.flatMap((clinic) => clinic.surgeons.flatMap((surgeon) => (surgeon.availableSlots ?? []).map((slot) => [slot.id, slot] as const))),
+      );
+      const petById = new Map(pets.map((pet) => [pet.id, pet]));
+
+      setAppointments(
+        appts.map((appt) => ({
+          id: appt.id,
+          petId: appt.petId,
+          petName: petById.get(appt.petId)?.name ?? appt.petId,
+          species: petById.get(appt.petId)?.species ?? "",
+          clinicName: clinicById.get(appt.clinicId)?.name ?? appt.clinicId,
+          surgeonName: surgeonById.get(appt.surgeonId)?.name ?? "—",
+          datetime: slotById.get(appt.slotId)?.datetime ?? null,
+          status: appt.status,
+          notes: appt.notes,
+        })),
+      );
+
+      // Patient enrichment: vaccination status + last AI assessment (capped)
+      const targets = pets.slice(0, ENRICH_LIMIT);
+      const enriched = await Promise.all(
+        targets.map(async (pet) => {
+          const [vaccinations, history] = await Promise.all([
+            listVaccinations(pet.id).catch(() => []),
+            getPredictionHistory(pet.id, 1).catch(() => []),
+          ]);
+          const now = Date.now();
+          let vaccineStatus: PatientRow["vaccineStatus"] = vaccinations.length ? "up-to-date" : "none";
+          let nextVaccine: PatientRow["nextVaccine"] = null;
+          for (const record of vaccinations) {
+            const due = new Date(record.nextDueAt).getTime();
+            if (Number.isNaN(due)) continue;
+            if (!nextVaccine || due < new Date(nextVaccine.dueAt).getTime()) {
+              nextVaccine = { name: record.vaccineName, dueAt: record.nextDueAt };
+            }
+            if (due < now) vaccineStatus = "overdue";
+            else if (due < now + DUE_SOON_MS && vaccineStatus !== "overdue") vaccineStatus = "due-soon";
+          }
+          const latest = history[0];
+          const lastRisk = latest
+            ? {
+                level: latest.risk_level,
+                disease: latest.predicted_diseases?.[0]?.disease_localized || latest.predicted_diseases?.[0]?.disease || "—",
+                at: latest.created_at,
+              }
+            : null;
+          return {
+            id: pet.id,
+            petName: pet.name,
+            species: pet.species,
+            breed: pet.breed,
+            ageYears: pet.ageYears,
+            ownerId: pet.ownerId,
+            vaccineStatus,
+            nextVaccine,
+            lastRisk,
+          } satisfies PatientRow;
+        }),
+      );
+      setPatients(enriched);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (role === "veterinarian") void loadLiveData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (role !== "veterinarian") {
     navigate("/pets");
     return null;
   }
 
-  useEffect(() => {
-    localStorage.setItem(PET_OWNER_APPOINTMENTS_KEY, JSON.stringify(appointments));
-  }, [appointments]);
+  const displayName = vetProfile.name.trim() || defaultVetName;
+  // Apply the "Dr." honorific only in English; other languages show the
+  // admin-entered name as-is (avoids awkward mixed-script prefixing).
+  const welcomeName = language === "en" && !/^dr\.?\s/i.test(displayName) ? `Dr. ${displayName}` : displayName;
+  const vetInitial = displayName.trim().charAt(0).toUpperCase() || "V";
 
-  useEffect(() => {
-    localStorage.setItem(PET_OWNER_SURGEON_INQUIRIES_KEY, JSON.stringify(surgeonInquiries));
-  }, [surgeonInquiries]);
+  // ── Derived views ──
+  const todayKey = new Date().toDateString();
+  const todaysAppointments = appointments.filter((appt) => appt.datetime && new Date(appt.datetime).toDateString() === todayKey);
+  const pendingAppointments = appointments.filter((appt) => appt.status === "pending");
+  const overdueVaccineCount = patients.filter((patient) => patient.vaccineStatus === "overdue").length;
+  const highRiskPatients = patients.filter(
+    (patient) => patient.lastRisk && patient.lastRisk.level === "high" && Date.now() - new Date(patient.lastRisk.at).getTime() < RISK_RECENT_MS,
+  );
 
-  const messages: Message[] = surgeonInquiries.map((inquiry) => ({
-    id: inquiry.id,
-    fromName: `${inquiry.petName} Owner`,
-    subject: `${inquiry.surgeonName}: ${inquiry.message}`,
-    timestamp: new Date(inquiry.createdAt).toLocaleString(),
-    isRead: inquiry.status === "replied",
-  }));
+  const followUps: FollowUpRow[] = useMemo(() => {
+    const rows: FollowUpRow[] = [];
+    for (const patient of patients) {
+      if (patient.vaccineStatus === "overdue" && patient.nextVaccine) {
+        rows.push({
+          id: `vacc-${patient.id}`,
+          petName: patient.petName,
+          type: tr("vaccineFollowUp"),
+          detail: `${patient.nextVaccine.name} · ${tr("overdueStatus")} (${patient.nextVaccine.dueAt.slice(0, 10)})`,
+          priority: "high",
+        });
+      } else if (patient.vaccineStatus === "due-soon" && patient.nextVaccine) {
+        rows.push({
+          id: `vacc-${patient.id}`,
+          petName: patient.petName,
+          type: tr("vaccineFollowUp"),
+          detail: `${patient.nextVaccine.name} · ${tr("dueSoonStatus")} (${patient.nextVaccine.dueAt.slice(0, 10)})`,
+          priority: "medium",
+        });
+      }
+      if (patient.lastRisk && (patient.lastRisk.level === "high" || patient.lastRisk.level === "medium")
+        && Date.now() - new Date(patient.lastRisk.at).getTime() < RISK_RECENT_MS) {
+        rows.push({
+          id: `risk-${patient.id}`,
+          petName: patient.petName,
+          type: tr("riskFollowUp"),
+          detail: `${patient.lastRisk.disease} · ${patient.lastRisk.at.slice(0, 10)}`,
+          priority: patient.lastRisk.level === "high" ? "high" : "medium",
+        });
+      }
+    }
+    return rows.sort((a, b) => (a.priority === b.priority ? 0 : a.priority === "high" ? -1 : 1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patients, language]);
 
   const filteredPatients = useMemo(() => {
+    const query = searchQuery.toLowerCase();
     return patients.filter(
       (patient) =>
-        patient.petName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        patient.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        patient.breed.toLowerCase().includes(searchQuery.toLowerCase()),
+        patient.petName.toLowerCase().includes(query) ||
+        patient.breed.toLowerCase().includes(query) ||
+        patient.species.toLowerCase().includes(query),
     );
   }, [patients, searchQuery]);
 
-  const todayKey = new Date().toDateString();
-  const todaysAppointments = appointments.filter((appointment) => {
-    if (!appointment.bookedAt) return true;
-    const parsedDate = new Date(appointment.bookedAt);
-    if (Number.isNaN(parsedDate.getTime())) return true;
-    return parsedDate.toDateString() === todayKey;
-  });
+  async function setAppointmentStatus(id: string, status: BackendAppointment["status"]) {
+    try {
+      await updateAppointment(id, { status });
+      setAppointments((prev) => prev.map((appt) => (appt.id === id ? { ...appt, status } : appt)));
+      toast({ title: tr("appointmentUpdated"), variant: "success" });
+    } catch {
+      toast({ title: tr("actionFailed"), variant: "error" });
+    }
+  }
 
-  const todayPatientNames = new Set(todaysAppointments.map((appointment) => appointment.petName.toLowerCase()));
-  const todaysPatients =
-    todayPatientNames.size > 0
-      ? filteredPatients.filter((patient) => todayPatientNames.has(patient.petName.toLowerCase()))
-      : filteredPatients.slice(0, 2);
+  async function handleSaveProfile() {
+    const normalizedName = vetProfile.name.trim() || defaultVetName;
+    const nextProfile: VetProfile = { ...vetProfile, name: normalizedName };
 
-  const pendingAppointments = appointments.filter((appointment) => appointment.status === "pending").length;
-  const highPriorityFollowUps = followUps.filter((followUp) => followUp.priority === "high").length;
-  const unreadMessages = messages.filter((message) => !message.isRead).length;
-  const overdueVaccines = patients.filter((patient) => patient.vaccineStatus.toLowerCase() !== "up to date").length;
-  const unresolvedInquiries = surgeonInquiries.filter((inquiry) => inquiry.status === "open").length;
-  const today = new Date();
-  const isCurrentCalendarMonth = today.getFullYear() === calendarYear && today.getMonth() === calendarMonth;
-
-  const bookedDaysThisMonth = useMemo(() => {
-    const days = new Set<number>();
-    appointments.forEach((appointment) => {
-      if (!appointment.bookedAt) return;
-      const date = new Date(appointment.bookedAt);
-      if (Number.isNaN(date.getTime())) return;
-      if (date.getFullYear() === calendarYear && date.getMonth() === calendarMonth) {
-        days.add(date.getDate());
-      }
-    });
-    return days;
-  }, [appointments, calendarMonth, calendarYear]);
-
-  const calendarWeeks = useMemo(() => {
-    const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1).getDay();
-    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
-    const cells: Array<number | null> = [
-      ...Array.from({ length: firstDayOfMonth }, () => null),
-      ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
-    ];
-
-    while (cells.length % 7 !== 0) {
-      cells.push(null);
+    const token = getAccessToken();
+    if (!token) {
+      setVetProfile(nextProfile);
+      localStorage.setItem(VET_PROFILE_KEY, JSON.stringify(nextProfile));
+      saveProfileName(normalizedName, "veterinarian");
+      toast({ title: tr("profileSaved"), variant: "success" });
+      return;
     }
 
-    return Array.from({ length: cells.length / 7 }, (_, weekIndex) => cells.slice(weekIndex * 7, weekIndex * 7 + 7));
-  }, [calendarMonth, calendarYear]);
-
-  const isOverviewView = activeSection === "overview";
-  const isApprovalsView = activeSection === "approvals";
-  const isPatientsView = activeSection === "patients";
-  const isFollowUpsView = activeSection === "follow-up-reminders";
-  const isInquiriesView = activeSection === "inquiries";
-  const isProfileView = activeSection === "profile";
-
-  const visibleAppointments =
-    activeSection === "approvals"
-      ? appointments.filter((appointment) => appointment.status === "pending")
-      : appointments;
-
-  const sidebarItems: Array<{ id: VetSection; label: string; icon: typeof User; badge?: number }> = [
-    { id: "overview", label: "Overview", icon: LayoutDashboard },
-    { id: "approvals", label: "Approvals", icon: ClipboardCheck },
-    { id: "follow-up-reminders", label: "Follow-up Reminders", icon: Activity },
-    { id: "patients", label: "Patients", icon: Building2 },
-    { id: "inquiries", label: "Inquiries", icon: ShieldCheck },
-    { id: "profile", label: "Profile", icon: User },
-  ];
-
-  const headerTitle = sidebarItems.find((item) => item.id === activeSection)?.label ?? "Overview";
-  const displayName = vetProfile.name.trim() || defaultVetName;
-  const welcomeName = /^dr\.?\s/i.test(displayName) ? displayName : `Dr. ${displayName}`;
-  const vetInitial = displayName.trim().charAt(0).toUpperCase() || "D";
-
-  function handleSelectSection(section: VetSection) {
-    setActiveSection(section);
-    setMobileNavOpen(false);
+    try {
+      setProfileSaving(true);
+      const updated = await updateMyProfile(token, {
+        displayName: normalizedName,
+        phoneNumber: nextProfile.phone.trim() || undefined,
+        specialization: nextProfile.specialization.trim() || undefined,
+        bio: nextProfile.bio.trim() || undefined,
+        photoURL: nextProfile.photoDataUrl || undefined,
+      });
+      const normalizedRemote: VetProfile = {
+        name: updated.displayName || normalizedName,
+        email: updated.email || nextProfile.email,
+        phone: updated.phoneNumber || "",
+        specialization: updated.specialization || "",
+        bio: updated.bio || "",
+        photoDataUrl: updated.photoURL || "",
+      };
+      setVetProfile(normalizedRemote);
+      localStorage.setItem(VET_PROFILE_KEY, JSON.stringify(normalizedRemote));
+      saveProfileName(normalizedRemote.name, "veterinarian");
+      toast({ title: tr("profileSaved"), variant: "success" });
+    } catch (err) {
+      toast({ title: tr("actionFailed"), description: (err as Error).message, variant: "error" });
+    } finally {
+      setProfileSaving(false);
+    }
   }
 
   function handleLogout() {
@@ -410,94 +367,113 @@ export function VeterinarianDashboardPage() {
     navigate("/auth/login", { replace: true });
   }
 
-  function handleConfirmAppointment(id: string) {
-    setAppointments((prev) =>
-      prev.map((appointment) =>
-        appointment.id === id ? { ...appointment, status: "confirmed" } : appointment,
-      ),
+  const sidebarItems: Array<{ id: VetSection; label: string; icon: typeof User; badge?: number }> = [
+    { id: "overview", label: tr("navOverview"), icon: LayoutDashboard },
+    { id: "approvals", label: tr("approvals"), icon: ClipboardCheck, badge: pendingAppointments.length },
+    { id: "follow-up-reminders", label: tr("followUpReminders"), icon: Activity, badge: followUps.filter((f) => f.priority === "high").length },
+    { id: "patients", label: tr("patients"), icon: PawPrint },
+    { id: "profile", label: tr("profile"), icon: User },
+  ];
+
+  const headerTitle = sidebarItems.find((item) => item.id === activeSection)?.label ?? tr("navOverview");
+
+  const card = "rounded-xl border border-border/80 bg-surface p-4 dark:border-neutral-800 dark:bg-neutral-900";
+
+  const statusVariant = (status: BackendAppointment["status"]) =>
+    status === "confirmed" ? "success" : status === "cancelled" ? "danger" : status === "completed" ? "info" : "warning";
+
+  const vaccineBadge = (status: PatientRow["vaccineStatus"]) =>
+    status === "overdue"
+      ? { variant: "danger" as const, label: tr("overdueStatus") }
+      : status === "due-soon"
+        ? { variant: "warning" as const, label: tr("dueSoonStatus") }
+        : status === "up-to-date"
+          ? { variant: "success" as const, label: tr("upToDate") }
+          : { variant: "outline" as const, label: tr("noVaccineRecords") };
+
+  const riskBadge = (level: string) => (level === "high" ? "danger" : level === "medium" ? "warning" : "success");
+
+  // Localize backend enum values so nothing renders as raw English in si/ta.
+  const statusLabel = (status: BackendAppointment["status"]) =>
+    tr(`status${status.charAt(0).toUpperCase()}${status.slice(1)}`);
+  const levelLabel = (level: string) =>
+    level === "high" ? tr("levelHigh") : level === "medium" ? tr("levelMedium") : tr("levelLow");
+
+  function formatSlot(datetime: string | null) {
+    if (!datetime) return "—";
+    return new Date(datetime).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  }
+
+  function StatTile({ label, value, icon: Icon, tone }: { label: string; value: string | number; icon: typeof User; tone?: "danger" | "success" }) {
+    return (
+      <div className={card}>
+        <div className="flex items-center justify-between">
+          <p className="text-[12px] font-medium text-accent-subtle">{label}</p>
+          <span className={cn(
+            "flex h-7 w-7 items-center justify-center rounded-lg",
+            tone === "danger" ? "bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400"
+              : tone === "success" ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
+              : "bg-surface-tertiary text-accent-subtle dark:bg-neutral-800",
+          )}>
+            <Icon className="h-3.5 w-3.5" />
+          </span>
+        </div>
+        <p className="mt-2 text-2xl font-semibold tracking-tight text-accent dark:text-white">{value}</p>
+      </div>
     );
   }
 
-  function handleRescheduleAppointment(id: string) {
-    const nextSlot = window.prompt("Enter new slot for this appointment (example: 04:00 PM):");
-    if (!nextSlot?.trim()) return;
-
-    setAppointments((prev) =>
-      prev.map((appointment) =>
-        appointment.id === id
-          ? { ...appointment, time: nextSlot.trim(), slot: nextSlot.trim(), status: "pending" }
-          : appointment,
-      ),
-    );
-  }
-
-  function handleCancelAppointment(id: string) {
-    setAppointments((prev) =>
-      prev.map((appointment) =>
-        appointment.id === id ? { ...appointment, status: "cancelled" } : appointment,
-      ),
-    );
-  }
-
-  function handleCreateNote(appointmentId: string) {
-    alert(`Create consultation note for appointment ${appointmentId}`);
-  }
-
-  function handlePrevCalendarMonth() {
-    if (calendarMonth === 0) {
-      setCalendarMonth(11);
-      setCalendarYear((prev) => prev - 1);
-      return;
+  function AppointmentActions({ appt }: { appt: AppointmentRow }) {
+    if (appt.status === "pending") {
+      return (
+        <div className="flex items-center gap-1.5">
+          <Button size="sm" onClick={() => setAppointmentStatus(appt.id, "confirmed")}><Check className="h-3.5 w-3.5" />{tr("confirmAction")}</Button>
+          <Button size="sm" variant="secondary" onClick={() => setAppointmentStatus(appt.id, "cancelled")}><X className="h-3.5 w-3.5" />{tr("cancel")}</Button>
+        </div>
+      );
     }
-    setCalendarMonth((prev) => prev - 1);
-  }
-
-  function handleNextCalendarMonth() {
-    if (calendarMonth === 11) {
-      setCalendarMonth(0);
-      setCalendarYear((prev) => prev + 1);
-      return;
+    if (appt.status === "confirmed") {
+      return <Button size="sm" variant="secondary" onClick={() => setAppointmentStatus(appt.id, "completed")}><Check className="h-3.5 w-3.5" />{tr("completeAction")}</Button>;
     }
-    setCalendarMonth((prev) => prev + 1);
+    return null;
   }
 
-  function handleMarkInquiryAsReplied(inquiryId: string) {
-    setSurgeonInquiries((prev) =>
-      prev.map((inquiry) => (inquiry.id === inquiryId ? { ...inquiry, status: "replied" } : inquiry)),
+  function AppointmentList({ items, showActions }: { items: AppointmentRow[]; showActions?: boolean }) {
+    if (items.length === 0) {
+      return <p className="p-4 text-center text-[13px] text-accent-subtle">{loading ? tr("loadingData") : tr("noAppointmentsYet")}</p>;
+    }
+    return (
+      <div className="divide-y divide-border/60 dark:divide-neutral-800">
+        {items.map((appt) => (
+          <div key={appt.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-tertiary text-accent-subtle dark:bg-neutral-800">
+                <PawPrint className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-[13px] font-semibold text-accent dark:text-white">{appt.petName}</p>
+                  {appt.species ? <Badge variant="outline">{appt.species}</Badge> : null}
+                </div>
+                <p className="truncate text-[11px] text-accent-subtle">
+                  <Clock className="mr-1 inline h-3 w-3" />{formatSlot(appt.datetime)} · {appt.clinicName} · {appt.surgeonName}
+                </p>
+                {appt.notes ? <p className="truncate text-[11px] text-accent-faint">{appt.notes}</p> : null}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant={statusVariant(appt.status)}>{statusLabel(appt.status)}</Badge>
+              {showActions ? <AppointmentActions appt={appt} /> : null}
+            </div>
+          </div>
+        ))}
+      </div>
     );
-  }
-
-  function handleSaveProfile() {
-    localStorage.setItem(VET_PROFILE_KEY, JSON.stringify(vetProfile));
-    alert("Profile saved");
-  }
-
-  function handleDeleteProfile() {
-    const confirmed = window.confirm("Delete veterinarian profile details?");
-    if (!confirmed) return;
-    localStorage.removeItem(VET_PROFILE_KEY);
-    setVetProfile({
-      name: defaultVetName,
-      email: "",
-      phone: "",
-      specialization: "",
-      bio: "",
-      photoDataUrl: "",
-    });
-  }
-
-  function handleProfilePhotoChange(file: File | null) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = typeof reader.result === "string" ? reader.result : "";
-      setVetProfile((prev) => ({ ...prev, photoDataUrl: dataUrl }));
-    };
-    reader.readAsDataURL(file);
   }
 
   return (
     <div className="flex min-h-dvh w-full overflow-hidden bg-surface-secondary dark:bg-neutral-950">
+      {/* ─── Sidebar ─── */}
       <aside className="hidden w-[220px] shrink-0 flex-col border-r border-border/80 bg-surface lg:flex dark:border-neutral-800 dark:bg-neutral-900">
         <div className="flex h-14 items-center gap-2.5 px-5">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-fg dark:bg-surface">
@@ -515,15 +491,13 @@ export function VeterinarianDashboardPage() {
         <Separator className="dark:bg-neutral-800" />
 
         <nav className="flex-1 px-3 py-3">
-          <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-accent-faint dark:text-accent-subtle">
-            Menu
-          </p>
+          <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-accent-faint dark:text-accent-subtle">{tr("menu")}</p>
           <div className="space-y-0.5">
             {sidebarItems.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => handleSelectSection(item.id)}
+                onClick={() => { setActiveSection(item.id); setMobileNavOpen(false); }}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium transition-all duration-100",
                   activeSection === item.id
@@ -534,9 +508,10 @@ export function VeterinarianDashboardPage() {
                 <item.icon className="h-[15px] w-[15px]" />
                 <span className="flex-1 text-left">{item.label}</span>
                 {item.badge && item.badge > 0 ? (
-                  <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold text-current">
-                    {item.badge}
-                  </span>
+                  <span className={cn(
+                    "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                    activeSection === item.id ? "bg-white/20 text-current" : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
+                  )}>{item.badge}</span>
                 ) : null}
               </button>
             ))}
@@ -551,16 +526,16 @@ export function VeterinarianDashboardPage() {
         <div className="border-t border-border/80 p-3 dark:border-neutral-800">
           <button
             type="button"
-            onClick={() => handleSelectSection("profile")}
+            onClick={() => setActiveSection("profile")}
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-surface-tertiary dark:hover:bg-primary"
           >
             <Avatar className="h-7 w-7">
-              {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt="Doctor profile" /> : null}
+              {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt="Vet profile" /> : null}
               <AvatarFallback className="text-[11px]">{vetInitial}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[12px] font-medium text-accent dark:text-white">{displayName}</p>
-              <p className="text-[10px] text-accent-faint dark:text-accent-subtle">Veterinarian</p>
+              <p className="truncate text-[12px] font-medium text-accent dark:text-white">{welcomeName}</p>
+              <p className="text-[10px] text-accent-faint dark:text-accent-subtle">{tr("veterinarians")}</p>
             </div>
           </button>
           <button
@@ -568,11 +543,12 @@ export function VeterinarianDashboardPage() {
             onClick={handleLogout}
             className="mt-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-[7px] text-[12px] font-medium text-accent-faint transition hover:bg-surface-tertiary hover:text-accent-muted dark:hover:bg-primary dark:hover:text-neutral-300"
           >
-            <LogOut className="h-3.5 w-3.5" />Sign out
+            <LogOut className="h-3.5 w-3.5" />{tr("signOut")}
           </button>
         </div>
       </aside>
 
+      {/* ─── Main ─── */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-border/80 bg-surface px-4 lg:px-8 dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-center gap-3">
@@ -588,11 +564,9 @@ export function VeterinarianDashboardPage() {
           <div className="flex items-center gap-3">
             <LanguageSwitcher compact />
             <ThemeSwitcher compact />
-            <Badge variant="outline" className="hidden gap-1 sm:inline-flex">
-              <Sparkles className="h-3 w-3" />AI Active
-            </Badge>
-            <Avatar className="h-7 w-7 cursor-pointer" onClick={() => handleSelectSection("profile")}>
-              {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt="Doctor profile" /> : null}
+            <Badge variant="outline" className="hidden gap-1 sm:inline-flex"><Sparkles className="h-3 w-3" />{tr("aiActive")}</Badge>
+            <Avatar className="h-7 w-7 cursor-pointer" onClick={() => setActiveSection("profile")}>
+              {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt="Vet profile" /> : null}
               <AvatarFallback className="text-[11px]">{vetInitial}</AvatarFallback>
             </Avatar>
           </div>
@@ -603,7 +577,7 @@ export function VeterinarianDashboardPage() {
             {sidebarItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => handleSelectSection(item.id)}
+                onClick={() => { setActiveSection(item.id); setMobileNavOpen(false); }}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium",
                   activeSection === item.id
@@ -613,608 +587,249 @@ export function VeterinarianDashboardPage() {
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
+                {item.badge ? <Badge variant="warning" className="ml-auto">{item.badge}</Badge> : null}
               </button>
             ))}
             <Separator className="my-1 dark:bg-neutral-800" />
             <button onClick={handleLogout} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-accent-faint">
-              <LogOut className="h-4 w-4" />Sign out
+              <LogOut className="h-4 w-4" />{tr("signOut")}
             </button>
           </div>
         )}
 
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1200px] px-4 py-6 lg:px-8 lg:py-8">
-            {isOverviewView && (
-              <section className="mb-6">
-                <p className="text-base leading-6 text-slate-500 dark:text-accent-subtle">Welcome back,</p>
-                <h2 className="mt-1 text-3xl font-semibold leading-tight text-slate-900 dark:text-white">{welcomeName}</h2>
-                <p className="mt-1 text-base text-accent-subtle dark:text-accent-faint">Clinic operations at a glance.</p>
-              </section>
-            )}
 
-            <section className="rounded-2xl border border-border bg-surface p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 lg:hidden">
-              <div className="flex gap-6 overflow-x-auto">
-                {sidebarItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleSelectSection(item.id)}
-                    className={cn(
-                      "flex-shrink-0 border-b-2 px-1 py-3 text-sm font-medium transition",
-                      activeSection === item.id
-                        ? "border-primary text-primary"
-                        : "border-transparent text-accent-subtle hover:text-slate-900 dark:hover:text-white",
+            {/* ─── Overview ─── */}
+            {activeSection === "overview" && (
+              <div className="space-y-6 animate-in">
+                <div>
+                  <h2 className="text-2xl font-semibold tracking-tight text-accent dark:text-white">{tr("welcomeBack")} {welcomeName}</h2>
+                  <p className="mt-1 text-sm text-accent-subtle dark:text-accent-faint">{tr("clinicOpsGlance")}</p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <StatTile label={tr("todaysSchedule")} value={loading ? "…" : todaysAppointments.length} icon={Calendar} />
+                  <StatTile label={tr("pendingApprovals")} value={pendingAppointments.length} icon={ClipboardCheck} tone={pendingAppointments.length > 0 ? "danger" : "success"} />
+                  <StatTile label={tr("patients")} value={patients.length} icon={PawPrint} />
+                  <StatTile label={tr("overdueVaccines")} value={overdueVaccineCount} icon={Syringe} tone={overdueVaccineCount > 0 ? "danger" : "success"} />
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+                  <div className="overflow-hidden rounded-xl border border-border/80 bg-surface dark:border-neutral-800 dark:bg-neutral-900">
+                    <div className="flex items-center justify-between border-b border-border/60 px-4 py-3 dark:border-neutral-800">
+                      <h3 className="text-[15px] font-semibold text-accent dark:text-white">{tr("todaysSchedule")}</h3>
+                      <Badge variant="outline">{todaysAppointments.length}</Badge>
+                    </div>
+                    {todaysAppointments.length === 0 ? (
+                      <p className="p-4 text-center text-[13px] text-accent-subtle">{loading ? tr("loadingData") : tr("noAppointmentsToday")}</p>
+                    ) : (
+                      <AppointmentList items={todaysAppointments} showActions />
                     )}
-                  >
-                    {item.label}
-                    {item.badge && item.badge > 0 ? ` (${item.badge})` : ""}
-                  </button>
-                ))}
-              </div>
-            </section>
+                  </div>
 
-            {isOverviewView && (
-              <section className="mt-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <div className="rounded-xl border border-border/70 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
-                    <p className="text-sm font-medium text-accent-subtle dark:text-accent-faint">Daily Confirmations</p>
-                    <p className="mt-1 text-3xl font-bold text-accent dark:text-white">{pendingAppointments}</p>
-                  </div>
-                  <div className="rounded-xl border border-border/70 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
-                    <p className="text-sm font-medium text-accent-subtle dark:text-accent-faint">Follow-up Reminders</p>
-                    <p className="mt-1 text-3xl font-bold text-accent dark:text-white">{highPriorityFollowUps}</p>
-                  </div>
-                  <div className="rounded-xl border border-border/70 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
-                    <p className="text-sm font-medium text-accent-subtle dark:text-accent-faint">Patients</p>
-                    <p className="mt-1 text-3xl font-bold text-accent dark:text-white">{todaysPatients.length}</p>
+                  <div className="space-y-4">
+                    <div className={card}>
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                        <h3 className="text-[15px] font-semibold text-accent dark:text-white">{tr("criticalAlerts")}</h3>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {highRiskPatients.length === 0 && <p className="text-[13px] text-accent-subtle">{loading ? tr("loadingData") : tr("noHighRiskPatients")}</p>}
+                        {highRiskPatients.slice(0, 5).map((patient) => (
+                          <button key={patient.id} onClick={() => { setActiveSection("patients"); setSearchQuery(patient.petName); }} className="flex w-full items-center justify-between rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 text-left transition hover:border-red-300 dark:border-red-950/50 dark:bg-red-950/20">
+                            <span>
+                              <span className="block text-[13px] font-medium text-accent dark:text-white">{patient.petName}</span>
+                              <span className="block text-[11px] text-accent-subtle">{patient.lastRisk?.disease} · {tr("highRiskRecent")}</span>
+                            </span>
+                            <Badge variant="danger">{levelLabel(patient.lastRisk?.level ?? "")}</Badge>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className={card}>
+                      <h3 className="text-[15px] font-semibold text-accent dark:text-white">{tr("followUpReminders")}</h3>
+                      <div className="mt-3 space-y-2">
+                        {followUps.length === 0 && <p className="text-[13px] text-accent-subtle">{loading ? tr("loadingData") : tr("noFollowUps")}</p>}
+                        {followUps.slice(0, 4).map((followUp) => (
+                          <div key={followUp.id} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 dark:border-neutral-800">
+                            <div className="min-w-0">
+                              <p className="truncate text-[13px] font-medium text-accent dark:text-white">{followUp.petName} — {followUp.type}</p>
+                              <p className="truncate text-[11px] text-accent-subtle">{followUp.detail}</p>
+                            </div>
+                            <Badge variant={followUp.priority === "high" ? "danger" : "warning"}>{levelLabel(followUp.priority)}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </section>
+              </div>
             )}
 
-            {isOverviewView && (
-              <section className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]">
-                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                  <div className="rounded-xl border border-border/70 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900 xl:col-span-2">
-                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Critical Alerts</h3>
-                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      <div className="flex items-center justify-between rounded-md bg-red-50 px-3 py-2 text-red-700 dark:bg-red-950/30 dark:text-red-300">
-                        <span className="text-sm font-medium">High-priority follow-ups</span>
-                        <span className="text-sm font-bold">{highPriorityFollowUps}</span>
-                      </div>
-                      <div className="flex items-center justify-between rounded-md bg-orange-50 px-3 py-2 text-orange-700 dark:bg-orange-950/30 dark:text-orange-300">
-                        <span className="text-sm font-medium">Overdue vaccines</span>
-                        <span className="text-sm font-bold">{overdueVaccines}</span>
-                      </div>
-                      <div className="flex items-center justify-between rounded-md bg-amber-50 px-3 py-2 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-                        <span className="text-sm font-medium">Open inquiries</span>
-                        <span className="text-sm font-bold">{unresolvedInquiries}</span>
-                      </div>
-                    </div>
-                  </div>
+            {/* ─── Approvals (pending appointments) ─── */}
+            {activeSection === "approvals" && (
+              <div className="animate-in">
+                <div className="mb-4">
+                  <h2 className="text-xl font-semibold text-accent dark:text-white">{tr("approvals")}</h2>
+                  <p className="mt-0.5 text-sm text-accent-subtle dark:text-accent-faint">{pendingAppointments.length} {tr("pendingApprovals").toLowerCase()}</p>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-border/80 bg-surface dark:border-neutral-800 dark:bg-neutral-900">
+                  <AppointmentList items={pendingAppointments} showActions />
+                </div>
 
-                  <div className="rounded-xl border border-border/70 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
-                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Today&apos;s Schedule</h3>
-                    <div className="mt-3 space-y-2">
-                      {todaysAppointments.slice(0, 3).map((appointment) => (
-                        <div key={appointment.id} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 dark:bg-neutral-800/70">
-                          <div>
-                            <p className="text-sm font-medium text-slate-900 dark:text-white">{appointment.petName}</p>
-                            <p className="text-xs text-slate-500">{appointment.ownerName}</p>
-                          </div>
-                          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{appointment.time}</p>
+                <h3 className="mb-3 mt-6 text-[15px] font-semibold text-accent dark:text-white">{tr("allAppointments")}</h3>
+                <div className="overflow-hidden rounded-xl border border-border/80 bg-surface dark:border-neutral-800 dark:bg-neutral-900">
+                  <AppointmentList items={appointments} showActions />
+                </div>
+              </div>
+            )}
+
+            {/* ─── Follow-up reminders ─── */}
+            {activeSection === "follow-up-reminders" && (
+              <div className="animate-in">
+                <div className="mb-4">
+                  <h2 className="text-xl font-semibold text-accent dark:text-white">{tr("followUpReminders")}</h2>
+                  <p className="mt-0.5 text-sm text-accent-subtle dark:text-accent-faint">{tr("highPriorityFollowUps")}: {followUps.filter((f) => f.priority === "high").length}</p>
+                </div>
+                <div className="space-y-2">
+                  {followUps.length === 0 && (
+                    <div className={cn(card, "text-center text-[13px] text-accent-subtle")}>{loading ? tr("loadingData") : tr("noFollowUps")}</div>
+                  )}
+                  {followUps.map((followUp) => (
+                    <div key={followUp.id} className={cn(card, "flex items-center justify-between gap-3")}>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className={cn(
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                          followUp.type === tr("vaccineFollowUp") ? "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400" : "bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400",
+                        )}>
+                          {followUp.type === tr("vaccineFollowUp") ? <Syringe className="h-4 w-4" /> : <Activity className="h-4 w-4" />}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-semibold text-accent dark:text-white">{followUp.petName} — {followUp.type}</p>
+                          <p className="truncate text-[11px] text-accent-subtle">{followUp.detail}</p>
                         </div>
-                      ))}
-                      {todaysAppointments.length === 0 ? <p className="text-sm text-accent-subtle">No appointments for today.</p> : null}
+                      </div>
+                      <Badge variant={followUp.priority === "high" ? "danger" : "warning"}>{levelLabel(followUp.priority)}</Badge>
                     </div>
-                  </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
-                  <div className="rounded-xl border border-border/70 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
-                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Pending Messages</h3>
-                    <div className="mt-3 space-y-2">
-                      {messages
-                        .filter((message) => !message.isRead)
-                        .slice(0, 3)
-                        .map((message) => (
-                          <div key={message.id} className="rounded-md bg-slate-50 px-3 py-2 dark:bg-neutral-800/70">
-                            <p className="text-sm font-medium text-slate-900 dark:text-white">{message.fromName}</p>
-                            <p className="line-clamp-1 text-xs text-slate-500">{message.subject}</p>
-                          </div>
-                        ))}
-                      {unreadMessages === 0 ? <p className="text-sm text-accent-subtle">No unread inquiries.</p> : null}
-                    </div>
+            {/* ─── Patients ─── */}
+            {activeSection === "patients" && (
+              <div className="animate-in">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-semibold text-accent dark:text-white">{tr("patients")}</h2>
+                    <p className="mt-0.5 text-sm text-accent-subtle dark:text-accent-faint">{patients.length}</p>
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-accent-faint" />
+                    <Input className="h-9 w-64 pl-8 text-[13px]" placeholder={tr("searchPatientsPlaceholder")} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-border/70 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
-                  <div className="flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={handlePrevCalendarMonth}
-                      className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 dark:bg-neutral-800 dark:text-slate-200"
-                    >
-                      Prev
-                    </button>
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={calendarMonth}
-                        onChange={(e) => setCalendarMonth(Number(e.target.value))}
-                        className="rounded-md border border-border-strong bg-white px-2 py-1 text-sm font-semibold text-slate-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-slate-100"
-                      >
-                        {CALENDAR_MONTHS.map((month, index) => (
-                          <option key={month} value={index}>
-                            {month}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        min={1900}
-                        max={9999}
-                        value={calendarYear}
-                        onChange={(e) => {
-                          const nextYear = Number(e.target.value);
-                          if (!Number.isNaN(nextYear)) {
-                            setCalendarYear(nextYear);
-                          }
-                        }}
-                        className="w-[88px] rounded-md border border-border-strong bg-white px-2 py-1 text-sm font-semibold text-slate-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-slate-100"
+                {loading && <p className="text-[13px] text-accent-subtle">{tr("loadingData")}</p>}
+                <div className="grid gap-3 md:grid-cols-2">
+                  {filteredPatients.map((patient) => {
+                    const vaccine = vaccineBadge(patient.vaccineStatus);
+                    return (
+                      <div key={patient.id} className={card}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-tertiary text-accent-subtle dark:bg-neutral-800">
+                              <PawPrint className="h-5 w-5" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-[14px] font-semibold text-accent dark:text-white">{patient.petName}</p>
+                              <p className="truncate text-[12px] text-accent-subtle">{patient.breed} · {patient.species} · {patient.ageYears} {language === "si" ? "අවුරුදු" : language === "ta" ? "வயது" : "yrs"}</p>
+                            </div>
+                          </div>
+                          <Badge variant={vaccine.variant}>{vaccine.label}</Badge>
+                        </div>
+
+                        <div className="mt-3 space-y-1.5 border-t border-border/60 pt-3 text-[12px] dark:border-neutral-800">
+                          <div className="flex items-center justify-between">
+                            <span className="text-accent-subtle">{tr("vaccinationStatus")}</span>
+                            <span className="font-medium text-accent dark:text-white">
+                              {patient.nextVaccine ? `${patient.nextVaccine.name} · ${patient.nextVaccine.dueAt.slice(0, 10)}` : tr("noVaccineRecords")}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-accent-subtle">{tr("lastAiAssessment")}</span>
+                            {patient.lastRisk ? (
+                              <span className="flex items-center gap-1.5 font-medium text-accent dark:text-white">
+                                <Badge variant={riskBadge(patient.lastRisk.level)}>{levelLabel(patient.lastRisk.level)}</Badge>
+                                {patient.lastRisk.disease}
+                              </span>
+                            ) : (
+                              <span className="text-accent-faint">—</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {!loading && filteredPatients.length === 0 && (
+                  <div className={cn(card, "text-center text-[13px] text-accent-subtle")}>—</div>
+                )}
+              </div>
+            )}
+
+            {/* ─── Profile ─── */}
+            {activeSection === "profile" && (
+              <div className="animate-in">
+                <div className="mb-4">
+                  <h2 className="text-xl font-semibold text-accent dark:text-white">{tr("doctorDetails")}</h2>
+                  <p className="mt-0.5 text-sm text-accent-subtle dark:text-accent-faint">{tr("updateProfessionalDetails")}</p>
+                </div>
+                <div className={cn(card, "max-w-2xl")}>
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-16 w-16">
+                      {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt="Vet profile" /> : null}
+                      <AvatarFallback className="text-xl">{vetInitial}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-[15px] font-semibold text-accent dark:text-white">{welcomeName}</p>
+                      <p className="flex items-center gap-1 text-[12px] text-accent-subtle"><Stethoscope className="h-3.5 w-3.5" />{vetProfile.specialization || "—"}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div><Label className="text-[11px]">{tr("fullName")}</Label><Input className="mt-1 h-9 text-[13px]" value={vetProfile.name} onChange={(e) => setVetProfile((p) => ({ ...p, name: e.target.value }))} /></div>
+                    <div><Label className="text-[11px]">{tr("specialization")}</Label><Input className="mt-1 h-9 text-[13px]" value={vetProfile.specialization} onChange={(e) => setVetProfile((p) => ({ ...p, specialization: e.target.value }))} /></div>
+                    <div><Label className="text-[11px]">{tr("email")}</Label><Input className="mt-1 h-9 text-[13px]" type="email" value={vetProfile.email} readOnly disabled /></div>
+                    <div><Label className="text-[11px]">{tr("phone")}</Label><Input className="mt-1 h-9 text-[13px]" value={vetProfile.phone} onChange={(e) => setVetProfile((p) => ({ ...p, phone: e.target.value }))} /></div>
+                    <div className="sm:col-span-2">
+                      <Label className="text-[11px]">{tr("bio")}</Label>
+                      <textarea
+                        value={vetProfile.bio}
+                        onChange={(e) => setVetProfile((p) => ({ ...p, bio: e.target.value }))}
+                        placeholder={tr("briefSummaryPlaceholder")}
+                        className="mt-1 h-20 w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-accent outline-none transition focus:border-primary dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
                       />
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleNextCalendarMonth}
-                      className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 dark:bg-neutral-800 dark:text-slate-200"
-                    >
-                      Next
-                    </button>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    {CALENDAR_WEEKDAYS.map((weekday) => (
-                      <div key={weekday}>{weekday}</div>
-                    ))}
-                  </div>
-                  <div className="mt-2 grid grid-cols-7 gap-1">
-                    {calendarWeeks.flat().map((day, index) => {
-                      if (!day) {
-                        return <div key={`empty-${index}`} className="h-9 rounded-md bg-transparent" />;
-                      }
-                      const isToday = isCurrentCalendarMonth && day === today.getDate();
-                      const hasAppointment = bookedDaysThisMonth.has(day);
-                      return (
-                        <div
-                          key={`day-${day}-${index}`}
-                          className={cn(
-                            "flex h-9 items-center justify-center rounded-md text-sm font-medium",
-                            isToday
-                              ? "bg-blue-600 text-white"
-                              : hasAppointment
-                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-                                : "bg-slate-50 text-slate-700 dark:bg-neutral-800/70 dark:text-slate-200",
-                          )}
-                        >
-                          {day}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-3 flex items-center gap-4 text-xs text-slate-600 dark:text-slate-300">
-                    <span className="inline-flex items-center gap-1">
-                      <span className="h-2 w-2 rounded-full bg-blue-600" />Today
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" />Appointment day
-                    </span>
-                  </div>
-                </div>
-              </section>
-            )}
-
-            <section className="px-0 pb-20 pt-6 space-y-6">
-              {(isOverviewView || isApprovalsView) && (
-                <div className="space-y-4">
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    {isApprovalsView ? "Pending Approvals" : "Appointment Queue"}
-                  </h2>
-                  {visibleAppointments.length === 0 ? (
-                    <div className="rounded-lg border-2 border-dashed border-border-strong p-8 text-center dark:border-neutral-700">
-                      <p className="text-accent-subtle">
-                        {isApprovalsView ? "No pending approvals right now" : "No appointments available"}
-                      </p>
-                    </div>
-                  ) : (
-                    visibleAppointments.map((appointment) => (
-                      <div key={appointment.id} className="rounded-lg border border-border bg-surface p-4 transition dark:border-neutral-800 dark:bg-neutral-900">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold text-slate-900 dark:text-white">{appointment.time}</p>
-                              <span
-                                className={cn(
-                                  "rounded-full px-2 py-1 text-xs font-medium",
-                                  appointment.status === "pending"
-                                    ? "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300"
-                                    : appointment.status === "confirmed"
-                                      ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300"
-                                      : appointment.status === "cancelled"
-                                        ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300"
-                                        : "bg-slate-200 text-slate-700 dark:bg-neutral-700 dark:text-neutral-200",
-                                )}
-                              >
-                                {appointment.status}
-                              </span>
-                            </div>
-                            <p className="mt-2 text-sm text-accent-muted">
-                              <span className="font-medium">{appointment.petName}</span>
-                              {appointment.petType ? ` - ${appointment.petType}` : ""}
-                            </p>
-                            <p className="mt-1 text-sm text-accent-subtle">Owner: {appointment.ownerName}</p>
-                            <p className="mt-1 text-sm text-accent-subtle">
-                              Phone: {appointment.ownerPhone ? appointment.ownerPhone : "No phone provided"}
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              <span className="inline-block rounded bg-slate-200 px-2 py-1 text-xs font-medium text-accent-muted">
-                                {appointment.consultationType}
-                              </span>
-                              {appointment.notes ? (
-                                <span className="inline-block rounded bg-slate-100 px-2 py-1 text-xs text-accent-subtle">
-                                  {appointment.notes}
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2 text-sm">
-                          {appointment.status === "pending" ? (
-                            <>
-                              <button
-                                onClick={() => handleConfirmAppointment(appointment.id)}
-                                className="rounded bg-green-600 px-3 py-1 font-medium text-white hover:bg-green-700"
-                              >
-                                Confirm
-                              </button>
-                              <button
-                                onClick={() => handleRescheduleAppointment(appointment.id)}
-                                className="rounded bg-amber-500 px-3 py-1 font-medium text-white hover:bg-amber-600"
-                              >
-                                Reschedule
-                              </button>
-                              <button
-                                onClick={() => handleCancelAppointment(appointment.id)}
-                                className="rounded bg-red-600 px-3 py-1 font-medium text-white hover:bg-red-700"
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          ) : null}
-                          {appointment.status === "confirmed" ? (
-                            <button
-                              onClick={() => handleCancelAppointment(appointment.id)}
-                              className="rounded bg-red-600 px-3 py-1 font-medium text-white hover:bg-red-700"
-                            >
-                              Cancel
-                            </button>
-                          ) : null}
-                          {appointment.status === "confirmed" || appointment.status === "pending" ? (
-                            <button
-                              onClick={() => handleCreateNote(appointment.id)}
-                              className="rounded bg-blue-600 px-3 py-1 font-medium text-white hover:bg-blue-700"
-                            >
-                              Consultation notes
-                            </button>
-                          ) : null}
-                        </div>
+                    <div className="sm:col-span-2">
+                      <Label className="text-[11px]">{tr("profilePhoto")}</Label>
+                      <div className="mt-1">
+                        <Dropzone label={tr("profilePhotoChoose")} value={vetProfile.photoDataUrl} onChange={(dataUrl) => setVetProfile((p) => ({ ...p, photoDataUrl: dataUrl }))} onClear={() => setVetProfile((p) => ({ ...p, photoDataUrl: "" }))} />
                       </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {isPatientsView ? (
-                <div className="space-y-4">
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Today's Patients</h2>
-                  <input
-                    type="text"
-                    placeholder="Search by pet name, owner, or breed..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full rounded-lg border border-border-strong bg-surface px-4 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900"
-                  />
-
-                  {todaysPatients.length === 0 ? (
-                    <div className="rounded-lg border-2 border-dashed border-border-strong p-8 text-center dark:border-neutral-700">
-                      <p className="text-accent-subtle">No patients scheduled for today</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {todaysPatients.map((patient) => (
-                        <button
-                          key={patient.id}
-                          onClick={() => setSelectedPatient(patient)}
-                          className="w-full rounded-lg border border-border bg-surface p-4 text-left transition hover:border-border-strong dark:border-neutral-800 dark:bg-neutral-900"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-semibold text-slate-900 dark:text-white">{patient.petName}</p>
-                              <p className="text-sm text-accent-subtle">{patient.petType} - {patient.breed}</p>
-                              <p className="mt-1 text-sm text-slate-500">Owner: {patient.ownerName}</p>
-                            </div>
-                            <span className="text-xs text-accent-subtle">Last visit: {patient.lastVisitDate}</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : null}
-
-              {isFollowUpsView ? (
-                <div className="space-y-4">
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Follow-up Reminders</h2>
-                  {followUps.length === 0 ? (
-                    <div className="rounded-lg border-2 border-dashed border-border-strong p-8 text-center dark:border-neutral-700">
-                      <p className="text-accent-subtle">No follow-ups scheduled</p>
-                    </div>
-                  ) : (
-                    followUps.map((followUp) => (
-                      <div key={followUp.id} className="rounded-lg border border-border bg-surface p-4 dark:border-neutral-800 dark:bg-neutral-900">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className="font-semibold text-slate-900 dark:text-white">{followUp.petName}</p>
-                            <p className="mt-1 text-sm text-accent-muted">{followUp.type}</p>
-                            <p className="mt-2 text-sm text-accent-subtle">Due: {followUp.dueDate}</p>
-                          </div>
-                          <span
-                            className={cn(
-                              "rounded-full px-3 py-1 text-xs font-semibold",
-                              followUp.priority === "high"
-                                ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300"
-                                : followUp.priority === "medium"
-                                  ? "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300"
-                                  : "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300",
-                            )}
-                          >
-                            {followUp.priority.toUpperCase()}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          className="mt-3 rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
-                        >
-                          Mark as done
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              ) : null}
-
-              {isInquiriesView ? (
-                <div className="space-y-4">
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Inquiries</h2>
-                  {messages.length === 0 ? (
-                    <div className="rounded-lg border-2 border-dashed border-border-strong p-8 text-center dark:border-neutral-700">
-                      <p className="text-accent-subtle">No inquiries yet</p>
-                    </div>
-                  ) : (
-                    messages.map((message) => (
-                      <div key={message.id} className="rounded-lg border border-border bg-surface p-4 transition dark:border-neutral-800 dark:bg-neutral-900">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <p className={message.isRead ? "text-slate-900 dark:text-white" : "font-semibold text-slate-900 dark:text-white"}>
-                              {message.fromName}
-                            </p>
-                            <p className="mt-1 text-sm text-accent-muted">{message.subject}</p>
-                            <p className="mt-2 text-xs text-slate-500">{message.timestamp}</p>
-                          </div>
-                          {!message.isRead ? <span className="ml-2 inline-block h-2.5 w-2.5 rounded-full bg-slate-500"></span> : null}
-                        </div>
-                        <div className="mt-3 flex gap-2">
-                          <button type="button" className="rounded bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">
-                            Reply
-                          </button>
-                          {!message.isRead ? (
-                            <button
-                              type="button"
-                              onClick={() => handleMarkInquiryAsReplied(message.id)}
-                              className="rounded bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700"
-                            >
-                              Mark as replied
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              ) : null}
-
-              {isProfileView ? (
-                <div className="space-y-4">
-                  <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                      <Avatar className="h-16 w-16">
-                        {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt="Doctor profile" /> : null}
-                        <AvatarFallback className="text-lg font-semibold">{vetInitial}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <p className="text-xs font-semibold uppercase tracking-widest text-accent-faint dark:text-accent-subtle">Profile</p>
-                        <h2 className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">Doctor Details</h2>
-                        <p className="mt-1 text-sm text-accent-subtle dark:text-accent-faint">Update your professional details and profile photo.</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <p className="text-xs font-medium text-accent-subtle">Full Name</p>
-                        <input
-                          value={vetProfile.name}
-                          onChange={(e) => setVetProfile((prev) => ({ ...prev, name: e.target.value }))}
-                          className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-                          placeholder="Dr. Name"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <p className="text-xs font-medium text-accent-subtle">Specialization</p>
-                        <input
-                          value={vetProfile.specialization}
-                          onChange={(e) => setVetProfile((prev) => ({ ...prev, specialization: e.target.value }))}
-                          className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-                          placeholder="Small Animal Surgery"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <p className="text-xs font-medium text-accent-subtle">Email</p>
-                        <input
-                          type="email"
-                          value={vetProfile.email}
-                          onChange={(e) => setVetProfile((prev) => ({ ...prev, email: e.target.value }))}
-                          className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-                          placeholder="doctor@clinic.com"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <p className="text-xs font-medium text-accent-subtle">Phone</p>
-                        <input
-                          value={vetProfile.phone}
-                          onChange={(e) => setVetProfile((prev) => ({ ...prev, phone: e.target.value }))}
-                          className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-                          placeholder="+94 77 123 4567"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5 md:col-span-2">
-                        <p className="text-xs font-medium text-accent-subtle">Bio</p>
-                        <textarea
-                          value={vetProfile.bio}
-                          onChange={(e) => setVetProfile((prev) => ({ ...prev, bio: e.target.value }))}
-                          rows={3}
-                          className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-                          placeholder="Brief professional summary"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5 md:col-span-2">
-                        <p className="text-xs font-medium text-accent-subtle">Profile Photo</p>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => handleProfilePhotoChange(e.target.files?.[0] ?? null)}
-                          className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <button type="button" onClick={handleSaveProfile} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg">
-                        Save profile
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleDeleteProfile}
-                        className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/30"
-                      >
-                        Delete profile
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </section>
-          </div>
-
-          {selectedPatient ? (
-            <div className="fixed inset-0 z-40 bg-black/50 transition" onClick={() => setSelectedPatient(null)}>
-              <div className="fixed bottom-0 right-0 top-0 w-full bg-surface shadow-lg sm:w-96" onClick={(e) => e.stopPropagation()}>
-                <div className="flex h-full flex-col">
-                  <div className="border-b border-border p-5">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Patient Details</h3>
-                      <button onClick={() => setSelectedPatient(null)} className="text-2xl text-slate-400 hover:text-accent-subtle">
-                        x
-                      </button>
                     </div>
                   </div>
 
-                  <div className="flex-1 space-y-4 overflow-y-auto p-5">
-                    <div>
-                      <p className="text-sm font-medium text-accent-subtle">Pet Name</p>
-                      <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{selectedPatient.petName}</p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm font-medium text-accent-subtle">Type</p>
-                        <p className="mt-1 text-slate-900 dark:text-white">{selectedPatient.petType}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-accent-subtle">Breed</p>
-                        <p className="mt-1 text-slate-900 dark:text-white">{selectedPatient.breed}</p>
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-medium text-accent-subtle">Owner Name</p>
-                      <p className="mt-1 text-slate-900 dark:text-white">{selectedPatient.ownerName}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-medium text-accent-subtle">Last Visit</p>
-                      <p className="mt-1 text-slate-900 dark:text-white">{selectedPatient.lastVisitDate}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-medium text-accent-subtle">Vaccination Status</p>
-                      <p
-                        className={cn(
-                          "mt-1 inline-block rounded-full px-3 py-1 text-sm font-medium",
-                          selectedPatient.vaccineStatus === "Up to date" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700",
-                        )}
-                      >
-                        {selectedPatient.vaccineStatus}
-                      </p>
-                    </div>
-
-                    {selectedPatient.allergies.length > 0 ? (
-                      <div>
-                        <p className="text-sm font-medium text-accent-subtle">Allergies</p>
-                        <div className="mt-2 space-y-1">
-                          {selectedPatient.allergies.map((allergy) => (
-                            <span key={allergy} className="block rounded bg-yellow-50 px-2 py-1 text-sm text-yellow-700">
-                              {allergy}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {selectedPatient.conditions.length > 0 ? (
-                      <div>
-                        <p className="text-sm font-medium text-accent-subtle">Known Conditions</p>
-                        <div className="mt-2 space-y-1">
-                          {selectedPatient.conditions.map((condition) => (
-                            <span key={condition} className="block rounded bg-orange-50 px-2 py-1 text-sm text-orange-700">
-                              {condition}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="border-t border-border p-5">
-                    <button type="button" className="w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-fg">
-                      Create consultation note
-                    </button>
+                  <div className="mt-4">
+                    <Button onClick={handleSaveProfile} disabled={profileSaving || profileLoading}>
+                      <Check className="h-4 w-4" />{profileSaving ? tr("loadingData") : tr("saveProfile")}
+                    </Button>
                   </div>
                 </div>
               </div>
-            </div>
-          ) : null}
+            )}
+          </div>
         </main>
       </div>
     </div>

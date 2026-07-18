@@ -141,6 +141,13 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
   },
 };
 
+import { DASHBOARD_TRANSLATIONS } from "./i18n-dashboard";
+
+// Merge dashboard translations into the base dictionary
+(Object.keys(TRANSLATIONS) as AppLanguage[]).forEach((lang) => {
+  Object.assign(TRANSLATIONS[lang], DASHBOARD_TRANSLATIONS[lang]);
+});
+
 function getStoredLanguage(): AppLanguage {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -156,6 +163,16 @@ export const useLanguageStore = create<LanguageStore>((set) => ({
   setLanguage: (language) => {
     localStorage.setItem(STORAGE_KEY, language);
     set({ language });
+    // Persist to the user's profile (when logged in) so backend agents —
+    // recommendations and monitoring notifications — reply in this language.
+    void import("./session")
+      .then(async ({ getAccessToken }) => {
+        const token = getAccessToken();
+        if (!token) return;
+        const { updateMyProfile } = await import("./auth-api");
+        await updateMyProfile(token, { preferredLanguage: language });
+      })
+      .catch(() => undefined);
   },
 }));
 

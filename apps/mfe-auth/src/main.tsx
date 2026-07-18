@@ -7,7 +7,9 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import "./index.css";
 import "./lib/theme"; // initialize theme on load
 
-if ("serviceWorker" in navigator && window.location.hostname === "localhost") {
+const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+
+if ("serviceWorker" in navigator && isLocalHost) {
   navigator.serviceWorker.getRegistrations().then((registrations) => {
     registrations.forEach((registration) => {
       registration.unregister();

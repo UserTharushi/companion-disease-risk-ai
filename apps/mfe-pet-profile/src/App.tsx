@@ -9,6 +9,7 @@ export default function App() {
       <Route path="/pets"          element={<PetListPage />} />
       <Route path="/pets/add"      element={<AddPetPage />} />
       <Route path="/pets/:petId"   element={<PetDetailPage />} />
+      <Route path="/pets/profile/:petId" element={<PetDetailPage />} />
     </Routes>
   );
 }

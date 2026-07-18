@@ -6,6 +6,8 @@ import { RoleSelectionPage } from "./pages/RoleSelectionPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { PetOwnerDashboardPage } from "./pages/PetOwnerDashboardPage";
 import { VeterinarianDashboardPage } from "./pages/VeterinarianDashboardPage";
 import { AdminDashboardPage } from "./pages/AdminDashboardPage";
@@ -33,6 +35,9 @@ export default function App() {
       <Route path="/auth/register"         element={<RegisterPage />} />
       <Route path="/forgot-password"       element={<ForgotPasswordPage />} />
       <Route path="/auth/forgot-password"  element={<ForgotPasswordPage />} />
+      <Route path="/reset-password"        element={<ResetPasswordPage />} />
+      <Route path="/auth/reset-password"   element={<ResetPasswordPage />} />
+      <Route path="/auth/change-password"  element={<ChangePasswordPage />} />
       
       {/* Protected routes with role-based access */}
       <Route

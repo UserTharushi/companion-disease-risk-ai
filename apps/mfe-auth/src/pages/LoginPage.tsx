@@ -7,9 +7,8 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { loginUser } from "../lib/auth-api";
 import { toast } from "../lib/use-toast";
 import {
-  getAccessToken, saveAccessToken, verifyAndSaveRole, saveUserCredentials,
-  getSelectedRole, saveProfileName, getRegisteredRoleForEmail, getVerifiedRole, saveSelectedRole,
-  isManagedVeterinarianEmail,
+  getAccessToken, saveAccessToken, saveProfileName, getVerifiedRole,
+  saveSelectedRole, syncServerRole, normalizeUserRole,
 } from "../lib/session";
 import { AuthLayout } from "../components/AuthLayout";
 import { redirectToPets } from "../lib/post-auth-redirect";
@@ -19,7 +18,7 @@ import { Label } from "../components/ui/label";
 import { Separator } from "../components/ui/separator";
 import { Alert } from "../components/ui/alert";
 import { AlertTriangle } from "lucide-react";
-import { t, useLanguageStore } from "../lib/language";
+import { getAppLanguage, t, useLanguageStore } from "../lib/language";
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid email address"),
@@ -28,28 +27,9 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
-const ROLE_LABELS: Record<string, string> = {
-  "pet-owner": "Pet Owner",
-  "veterinarian": "Veterinarian",
-  "admin": "Admin",
-};
-
-const ROLE_OPTIONS: Array<{ id: "pet-owner" | "veterinarian" | "admin"; label: string }> = [
-  { id: "pet-owner", label: "Pet Owner" },
-  { id: "veterinarian", label: "Veterinarian" },
-  { id: "admin", label: "Admin" },
-];
-
 export function LoginPage() {
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
-  const [selectedRole, setSelectedRole] = useState<"pet-owner" | "veterinarian" | "admin">(() => {
-    const saved = getSelectedRole();
-    if (saved === "pet-owner" || saved === "veterinarian" || saved === "admin") {
-      return saved;
-    }
-    return "pet-owner";
-  });
   const verifiedRole = getVerifiedRole();
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -62,8 +42,7 @@ export function LoginPage() {
   });
 
   if (getAccessToken()) {
-    const activeRole = verifiedRole || selectedRole;
-    const path = activeRole === "veterinarian" ? "/vet-dashboard" : activeRole === "admin" ? "/admin-dashboard" : "/pets";
+    const path = verifiedRole === "veterinarian" ? "/vet-dashboard" : verifiedRole === "admin" ? "/admin-dashboard" : "/pets";
     return <Navigate to={path} replace />;
   }
 
@@ -72,31 +51,31 @@ export function LoginPage() {
       setErrorMessage(null);
       setIsSubmitting(true);
 
-      if (selectedRole === "veterinarian" && !isManagedVeterinarianEmail(values.email)) {
-        setErrorMessage(language === "si"
-          ? "වෙට් පරිවේශය පාලනය කරන්නේ ඇඩ්මින් විසිනි. ලොගින් වීමට පෙර ඇඩ්මින් ඔබගේ පැතිකඩ එකතු කරණු ඇතැයි ඉල්ලන්න."
-          : language === "ta"
-            ? "வெட் அணுகல் நிர்வாகியால் நிர்வகிக்கப்படுகிறது. உள்நுழைவதற்கு முன் உங்கள் சுயவிவரத்தை சேர்க்க நிர்வாகியை அணுகவும்."
-            : "Veterinarian access is managed by admin. Ask an admin to add your profile before signing in.");
+      const { token, displayName, role, mustChangePassword } = await loginUser({ email: values.email, password: values.password });
+      // The server is the source of truth for the account's role — route by it
+      const authenticatedRole = normalizeUserRole(role);
+      if (!authenticatedRole) {
+        setErrorMessage("Unsupported account role returned by the server.");
         return;
       }
 
-      const expectedRole = getRegisteredRoleForEmail(values.email);
-      if (expectedRole && expectedRole !== selectedRole) {
-        setErrorMessage(`This account is registered as ${ROLE_LABELS[expectedRole] ?? expectedRole}. Select that role to continue.`);
-        return;
-      }
-
-      const { token, displayName } = await loginUser({ email: values.email, password: values.password });
-
-      if (!getRegisteredRoleForEmail(values.email)) {
-        saveUserCredentials(values.email, selectedRole);
-      }
-      verifyAndSaveRole(values.email, selectedRole);
-      saveProfileName(displayName || values.email.split("@")[0], selectedRole);
+      syncServerRole(values.email, authenticatedRole);
+      saveSelectedRole(authenticatedRole);
+      saveProfileName(displayName || values.email.split("@")[0], authenticatedRole);
       saveAccessToken(token);
 
+      // Sync the locally chosen language to the profile so backend agents
+      // (monitoring notifications) use it too
+      void import("../lib/auth-api")
+        .then(({ updateMyProfile }) => updateMyProfile(token, { preferredLanguage: getAppLanguage() }))
+        .catch(() => undefined);
+
       toast({ title: "Signed in", variant: "success" });
+      if (mustChangePassword) {
+        // Admin-provisioned account with a temporary password — force a change
+        navigate("/auth/change-password", { replace: true });
+        return;
+      }
       redirectToPets(navigate);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Authentication failed";
@@ -116,31 +95,6 @@ export function LoginPage() {
               {language === "si" ? "ඉදිරියට යාම සඳහා ඔබේ තොරතුරු ඇතුළත් කරන්න" : language === "ta" ? "தொடர உங்கள் விவரங்களை உள்ளிடவும்" : "Enter your credentials to continue"}
             </p>
           </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {ROLE_OPTIONS.map((roleOption) => {
-            const active = selectedRole === roleOption.id;
-            return (
-              <Button
-                key={roleOption.id}
-                type="button"
-                size="sm"
-                variant={active ? "default" : "secondary"}
-                onClick={() => {
-                  setSelectedRole(roleOption.id);
-                  saveSelectedRole(roleOption.id);
-                  setErrorMessage(null);
-                }}
-              >
-                  {roleOption.id === "pet-owner"
-                    ? (language === "si" ? "සුරතල් හිමිකරු" : language === "ta" ? "செல்லப்பிராணி உரிமையாளர்" : roleOption.label)
-                    : roleOption.id === "veterinarian"
-                      ? (language === "si" ? "වෙට්වර්" : language === "ta" ? "வெட்" : roleOption.label)
-                      : (language === "si" ? "ඇඩ්මින්" : language === "ta" ? "நிர்வாகி" : roleOption.label)}
-              </Button>
-            );
-          })}
         </div>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
@@ -204,7 +158,7 @@ export function LoginPage() {
         </div>
 
         <p className="text-center text-sm text-accent-subtle">
-          {language === "si" ? "ගිණුමක් නැද්ද?" : language === "ta" ? "கணக்கு இல்லையா?" : "Don&apos;t have an account?"}{" "}
+          {language === "si" ? "ගිණුමක් නැද්ද?" : language === "ta" ? "கணக்கு இல்லையா?" : "Don't have an account?"} {" "}
           <Link to="/auth/register" className="font-medium text-accent hover:underline">
             {t(language, "createAccount")}
           </Link>

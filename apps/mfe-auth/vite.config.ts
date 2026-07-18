@@ -17,6 +17,7 @@ export default defineConfig({
       shared: ["react", "react-dom", "react-router-dom", "zustand"],
     }),
       VitePWA({
+        disable: true,
         registerType: "autoUpdate",
         includeAssets: ["favicon.ico", "apple-touch-icon.png", "pwa-192.png", "pwa-512.png"],
         manifest: {
