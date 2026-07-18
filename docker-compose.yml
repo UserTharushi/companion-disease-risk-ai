@@ -41,12 +41,22 @@ services:
     networks:
       - companion-net
     env_file: .env
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:4001
+      - PET_SERVICE_URL=http://pet-service:4002
+      - CLINIC_SERVICE_URL=http://clinic-service:4003
+      - NOTIFICATION_SERVICE_URL=http://notification-service:4004
+      - VACCINATION_SERVICE_URL=http://vaccination-service:4005
+      - AI_SERVICE_URL=http://ai-service:8001
+      - AGENT_SERVICE_URL=http://agent-service:8002
     depends_on:
       - auth-service
       - pet-service
       - clinic-service
       - notification-service
       - vaccination-service
+      - ai-service
+      - agent-service
 
   # ── Auth Service ───────────────────────────
   auth-service:
@@ -58,6 +68,8 @@ services:
     networks:
       - companion-net
     env_file: .env
+    depends_on:
+      - mongodb
 
   # ── Pet Service ────────────────────────────
   pet-service:
@@ -69,6 +81,8 @@ services:
     networks:
       - companion-net
     env_file: .env
+    depends_on:
+      - mongodb
 
   # ── Clinic Service ─────────────────────────
   clinic-service:
@@ -80,6 +94,8 @@ services:
     networks:
       - companion-net
     env_file: .env
+    depends_on:
+      - mongodb
 
   # ── Notification Service ───────────────────
   notification-service:
@@ -91,6 +107,8 @@ services:
     networks:
       - companion-net
     env_file: .env
+    depends_on:
+      - mongodb
 
   # ── Vaccination Service ────────────────────
   vaccination-service:
@@ -102,6 +120,8 @@ services:
     networks:
       - companion-net
     env_file: .env
+    depends_on:
+      - mongodb
 
   # ── AI Service (Python FastAPI) ────────────
   ai-service:
@@ -113,6 +133,14 @@ services:
     networks:
       - companion-net
     env_file: .env
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - MONGODB_URI=mongodb://root:rootpassword@mongodb:27017/companion_ai?authSource=admin
+    volumes:
+      - ./ontology/neo4j:/app/ontology:ro
+    depends_on:
+      - mongodb
+      - neo4j
 
   # ── Agent Service (Python / LangGraph) ─────
   agent-service:
@@ -124,6 +152,18 @@ services:
     networks:
       - companion-net
     env_file: .env
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - MONGODB_URI=mongodb://root:rootpassword@mongodb:27017/companion_ai?authSource=admin
+      - PET_SERVICE_URL=http://pet-service:4002
+      - CLINIC_SERVICE_URL=http://clinic-service:4003
+      - VACCINATION_SERVICE_URL=http://vaccination-service:4005
+      - NOTIFICATION_SERVICE_URL=http://notification-service:4004
+      - AUTH_SERVICE_URL=http://auth-service:4001
+      - AI_SERVICE_URL=http://ai-service:8001
+    depends_on:
+      - mongodb
+      - neo4j
 
   # ── Neo4j (Ontology) ───────────────────────
   neo4j:
@@ -132,7 +172,7 @@ services:
       - "7474:7474"
       - "7687:7687"
     environment:
-      - NEO4J_AUTH=neo4j/your-neo4j-password
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-your-neo4j-password}
       - NEO4J_PLUGINS=["apoc", "graph-data-science"]
     volumes:
       - neo4j_data:/data
