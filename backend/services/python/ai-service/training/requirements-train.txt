@@ -1,0 +1,5 @@
+# Training-only dependencies — NOT installed in the service Docker image.
+# pip install -r requirements.txt -r training/requirements-train.txt
+datasets==2.20.0
+kagglehub==0.3.12
+matplotlib==3.9.0

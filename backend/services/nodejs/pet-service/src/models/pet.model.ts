@@ -14,6 +14,10 @@ const PetSchema = new Schema<PetDocument>(
     sex:      { type: String, enum: ["male", "female"], required: true },
     neutered: { type: Boolean, default: false },
     photoURL: { type: String },
+    vaccinationName: { type: String },
+    vaccinationDate: { type: String },
+    vaccinationFrequency: { type: String },
+    nextVaccinationDate: { type: String },
   },
   { timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } }
 );

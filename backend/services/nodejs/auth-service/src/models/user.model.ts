@@ -6,6 +6,13 @@ export interface UserDocument extends Document {
   passwordHash: string;
   displayName: string;
   phoneNumber?: string;
+  address?: string;
+  photoURL?: string;
+  dateOfBirth?: string;
+  specialization?: string;
+  bio?: string;
+  preferredLanguage: "en" | "si" | "ta";
+  mustChangePassword: boolean;
   role: "owner" | "vet" | "admin";
   createdAt: Date;
   updatedAt: Date;
@@ -18,6 +25,13 @@ const userSchema = new Schema<UserDocument>(
     passwordHash: { type: String, required: true },
     displayName:  { type: String, required: true, trim: true },
     phoneNumber:  { type: String, trim: true },
+    address:      { type: String, trim: true },
+    photoURL:     { type: String, trim: true },
+    dateOfBirth:  { type: String, trim: true },
+    specialization: { type: String, trim: true },
+    bio:          { type: String, trim: true },
+    preferredLanguage: { type: String, enum: ["en", "si", "ta"], default: "en" },
+    mustChangePassword: { type: Boolean, default: false },
     role:         { type: String, enum: ["owner", "vet", "admin"], default: "owner" },
   },
   { timestamps: true },

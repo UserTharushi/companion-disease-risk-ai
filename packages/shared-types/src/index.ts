@@ -8,6 +8,12 @@ export interface User {
   email: string;
   displayName: string;
   photoURL?: string;
+  phoneNumber?: string;
+  address?: string;
+  dateOfBirth?: string;
+  preferredLanguage?: "en" | "si" | "ta";
+  specialization?: string;
+  bio?: string;
   createdAt: string;
   role: "owner" | "admin" | "vet";
 }
@@ -27,6 +33,10 @@ export interface Pet {
   sex: PetSex;
   neutered: boolean;
   photoURL?: string;
+  vaccinationName?: string;
+  vaccinationDate?: string;
+  vaccinationFrequency?: string;
+  nextVaccinationDate?: string;
   createdAt: string;
   updatedAt: string;
 }
