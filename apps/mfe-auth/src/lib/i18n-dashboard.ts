@@ -90,6 +90,7 @@ export const DASHBOARD_TRANSLATIONS: Record<AppLanguage, Record<string, string>>
     // ── owner clinics ──
     clinicsAppointments: "Clinics & Appointments",
     findClinicsManage: "Find clinics and manage bookings",
+    nearbyClinicsMap: "Nearby Clinics Map",
     myAppointments: "My Appointments",
     surgeonsAvailability: "Surgeons & Availability",
     rescheduleTo: "Reschedule to...",
@@ -361,6 +362,7 @@ export const DASHBOARD_TRANSLATIONS: Record<AppLanguage, Record<string, string>>
 
     clinicsAppointments: "ක්ලිනික් සහ හමුවීම්",
     findClinicsManage: "ක්ලිනික් සොයා වෙන්කිරීම් කළමනාකරණය කරන්න",
+    nearbyClinicsMap: "අවට සායන සිතියම",
     myAppointments: "මගේ හමුවීම්",
     surgeonsAvailability: "ශල්‍ය වෛද්‍යවරු සහ ලබාගත හැකි වේලාවන්",
     rescheduleTo: "නැවත වෙන් කරන්න...",
@@ -627,6 +629,7 @@ export const DASHBOARD_TRANSLATIONS: Record<AppLanguage, Record<string, string>>
 
     clinicsAppointments: "கிளினிக்குகள் & சந்திப்புகள்",
     findClinicsManage: "கிளினிக்குகளைக் கண்டறிந்து முன்பதிவுகளை நிர்வகிக்கவும்",
+    nearbyClinicsMap: "அருகிலுள்ள கிளினிக்குகள் வரைபடம்",
     myAppointments: "என் சந்திப்புகள்",
     surgeonsAvailability: "அறுவை மருத்துவர்கள் & கிடைக்கும் நேரங்கள்",
     rescheduleTo: "மறுபதிவு செய்ய...",

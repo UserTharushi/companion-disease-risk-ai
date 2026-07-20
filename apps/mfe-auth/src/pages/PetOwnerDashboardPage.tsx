@@ -19,6 +19,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { Dropzone } from "../components/ui/dropzone";
 import { ThemeSwitcher } from "../components/ThemeSwitcher";
 import { NotificationCenter } from "../components/NotificationCenter";
+import { ClinicMap, type MapClinic } from "../components/ClinicMap";
 import { cn } from "../lib/utils";
 import { getMyProfile, updateMyProfile } from "../lib/auth-api";
 import {
@@ -1405,6 +1406,22 @@ export function PetOwnerDashboardPage() {
                       {tr("noNearbyRegistered").replace("{km}", "25")}
                     </div>
                   ) : null;
+                })()}
+
+                {(() => {
+                  const mapClinics: MapClinic[] = [
+                    ...nearbyClinics
+                      .filter((c) => typeof c.latitude === "number" && typeof c.longitude === "number")
+                      .map((c) => ({ id: c.id, name: c.name, latitude: c.latitude as number, longitude: c.longitude as number, external: false })),
+                    ...externalClinics.map((c) => ({ id: `ext-${c.id}`, name: c.name, latitude: c.latitude, longitude: c.longitude, distanceKm: c.distanceKm, external: true })),
+                  ];
+                  if (!userLocation && mapClinics.length === 0) return null;
+                  return (
+                    <div>
+                      <h3 className="mb-2 text-[13px] font-semibold text-accent">{tr("nearbyClinicsMap")}</h3>
+                      <ClinicMap userLocation={userLocation} clinics={mapClinics} />
+                    </div>
+                  );
                 })()}
 
                 {appointments.length > 0 && (
