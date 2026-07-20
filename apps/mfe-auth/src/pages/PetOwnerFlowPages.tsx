@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Calendar, Camera, Check, ClipboardList, MapPin, Phone, Share2, ShieldCheck, Star, Stethoscope, Trophy, Upload } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Calendar, Camera, Check, MapPin, Phone, Share2, Star, Stethoscope, Upload } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
@@ -352,39 +352,6 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
     });
   }
 
-  const timeline = [
-    {
-      id: "t1",
-      title: language === "si" ? "AI පුරෝකථනය" : language === "ta" ? "AI கணிப்பு" : "AI PREDICTION",
-      heading: language === "si" ? "ක්‍රියාකාරී මට්ටම 12% කින් ඉහළයි" : language === "ta" ? "செயல்பாட்டு அளவு 12% அதிகம்" : "Activity levels are 12% higher",
-      body: language === "si"
-        ? `මෑත කාලීන collar දත්ත අනුව ${pet.name} වැඩි ශක්තියක් පෙන්වයි. වත්මන් කැලරි ප්‍රමාණය තබා ගන්න.`
-        : language === "ta"
-          ? `சமீபத்திய collar தரவின் அடிப்படையில் ${pet.name} அதிக சக்தியை காட்டுகிறது. தற்போதைய கலோரி அளவைத் தொடரவும்.`
-          : `Based on recent collar data, ${pet.name} is showing increased stamina. Maintain current calorie intake.`,
-      meta: language === "si" ? "අද" : language === "ta" ? "இன்று" : "TODAY",
-      tone: "primary",
-      icon: ShieldCheck,
-    },
-    {
-      id: "t2",
-      title: language === "si" ? "වෛද්‍ය පරීක්ෂාව" : language === "ta" ? "மருத்துவ பரிசோதனை" : "CLINICAL CHECKUP",
-      heading: language === "si" ? "සාමාන්‍ය සුවතාව පරීක්ෂාව" : language === "ta" ? "பொது நல பரிசோதனை" : "General Wellness Exam",
-      body: language === "si" ? "හෘදය සහ පෙනහලු හොඳින් ඇසේ. සන්ධි වයසට ගැළපෙන ලෙස සෞඛ්‍යවත්ය." : language === "ta" ? "இதயம் மற்றும் நுரையீரல் தெளிவாக உள்ளது. மூட்டுகள் வயதுக்கு ஏற்றதாக ஆரோக்கியமாக உள்ளன." : "Heart and lungs sound clear. Joints are healthy for age.",
-      meta: language === "si" ? "මාර්තු 15" : language === "ta" ? "மார் 15" : "MAR 15",
-      tone: "neutral",
-      icon: ClipboardList,
-    },
-    {
-      id: "t3",
-      title: language === "si" ? "සැලකිය යුතු පියවර" : language === "ta" ? "முக்கிய அடைவு" : "MILESTONE",
-      heading: language === "si" ? "ඉලක්ක බරට ළඟා විය" : language === "ta" ? "இலக்கு எடையை அடைந்தது" : "Reached Target Weight",
-      body: language === "si" ? `${pet.name} ඉලක්ක බරට සාර්ථකව ළඟා වී ඉහළ ප්‍රෝටීන් ආහාරයට මාරු විය.` : language === "ta" ? `${pet.name} இலக்கு எடையை வெற்றிகரமாக அடைந்து, அதிக புரதம் கொண்ட உணவு மாற்றத்தை முடித்தது.` : `${pet.name} successfully hit the target weight and completed a high-protein diet transition.`,
-      meta: language === "si" ? "පෙබ 10" : language === "ta" ? "பிப் 10" : "FEB 10",
-      tone: "neutral",
-      icon: Trophy,
-    },
-  ];
 
   const content = (
     <>
@@ -453,32 +420,6 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
               </div>
             </article>
           ))}
-        </div>
-      </section>
-
-      <section className={cardClassP5}>
-        <div className="mb-2">
-          <h3 className="text-[15px] font-semibold text-accent">Health History & Insights</h3>
-          <p className="text-sm text-accent-subtle">AI-driven monitoring and clinical logs</p>
-        </div>
-        <div className="mt-4 space-y-4">
-          {timeline.map((item) => {
-            const Icon = item.icon;
-            const highlight = item.tone === "primary";
-            return (
-              <article key={item.id} className={`rounded-2xl border p-4 ${highlight ? "border-primary/40 bg-info-light dark:bg-primary/10" : "border-border bg-surface dark:border-neutral-700 dark:bg-neutral-950"}`}>
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`flex h-7 w-7 items-center justify-center rounded-full ${highlight ? "bg-primary text-white" : "bg-surface-tertiary text-accent"}`}><Icon className="h-4 w-4" /></span>
-                    <p className="text-xs font-bold uppercase tracking-widest text-accent-subtle">{item.title}</p>
-                  </div>
-                  <span className="text-xs font-semibold text-accent-faint">{item.meta}</span>
-                </div>
-                <p className="text-[14px] font-semibold text-accent">{item.heading}</p>
-                <p className="mt-1 text-sm text-accent-subtle">{item.body}</p>
-              </article>
-            );
-          })}
         </div>
       </section>
 
@@ -607,7 +548,6 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
           <div className="flex items-center gap-2"><Badge variant="info">{language === "si" ? "ඉහළම ශ්‍රේණිගත" : language === "ta" ? "சிறந்த மதிப்பீடு" : "Top Rated"}</Badge><h2 className="text-[15px] font-semibold text-accent">{clinic.name}</h2></div>
           <div>
             <p className="flex items-center gap-2 text-sm text-accent-subtle"><MapPin className="h-4 w-4" />{clinic.address}</p>
-            <p className="ml-6 text-sm text-accent-faint">{language === "si" ? "නියු යෝර්ක්, NY 10001" : language === "ta" ? "நியூயோர்க், NY 10001" : "New York, NY 10001"}</p>
           </div>
           <p className="flex items-center gap-2 text-sm text-accent"><Phone className="h-4 w-4" />{clinic.phone}</p>
           <div className="rounded-2xl border border-border bg-surface-tertiary p-4">
@@ -615,7 +555,6 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
               <p className="text-2xl font-semibold text-accent">{clinic.rating}</p>
               <div className="text-right">
                 <p className="text-[13px] font-semibold text-accent">{clinic.reviews} {language === "si" ? "සමාලෝචන" : language === "ta" ? "மதிப்புரைகள்" : "Reviews"}</p>
-                <p className="text-sm text-accent-subtle">{language === "si" ? "95% පාරිභෝගිකයන් සතුටුයි" : language === "ta" ? "95% வாடிக்கையாளர்கள் திருப்தி" : "95% satisfied clients"}</p>
               </div>
             </div>
             <p className="mt-1 text-warning-fg">★★★★★</p>
@@ -639,7 +578,7 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
 
         <div className="mt-5">
           <p className="text-base font-semibold text-accent">{language === "si" ? "කාලසටහන තෝරන්න" : language === "ta" ? "அட்டவணையைத் தேர்ந்தெடுக்கவும்" : "Select Schedule"}</p>
-          <p className="mt-1 text-sm text-accent-subtle">{language === "si" ? "සැප්තැම්බර් 2024" : language === "ta" ? "செப்டம்பர் 2024" : "September 2024"}</p>
+          <p className="mt-1 text-sm text-accent-subtle">{new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })}</p>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {scheduleDays.map((day) => (
               <button

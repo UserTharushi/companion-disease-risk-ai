@@ -1042,10 +1042,11 @@ export function PetOwnerDashboardPage() {
                     {/* Stats row */}
                     <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
                       {[
-                        { label: "Pets", value: pets.length, icon: PawPrint, onClick: () => setActiveTab("pets") },
+                        { label: tr("navPets"), value: pets.length, icon: PawPrint, onClick: () => setActiveTab("pets") },
                         { label: tr("appointments"), value: activeAppts, icon: Calendar, onClick: () => setActiveTab("clinics") },
                         { label: tr("assessments"), value: predictions.length, icon: Brain, onClick: () => setActiveTab("ai") },
-                        { label: tr("healthScore"), value: "92%", icon: Activity, onClick: () => {} },
+                        // Health score derived from the most recent assessment's risk (— when none yet)
+                        { label: tr("healthScore"), value: predictions.length === 0 ? "—" : (predictions[0].risk === "high" ? "45%" : predictions[0].risk === "moderate" ? "70%" : "90%"), icon: Activity, onClick: () => setActiveTab("ai") },
                       ].map((s) => (
                         <button key={s.label} onClick={s.onClick} className="group rounded-xl border border-border/80 bg-surface dark:border-neutral-800 dark:bg-neutral-900 p-4 text-left transition-all hover:border-border-strong hover:shadow-sm">
                           <div className="flex items-center justify-between">
