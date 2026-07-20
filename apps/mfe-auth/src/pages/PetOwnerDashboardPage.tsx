@@ -444,8 +444,31 @@ export function PetOwnerDashboardPage() {
     };
   }, [fallbackName, profileStorageKey]);
   useEffect(() => {
-    if (!navigator.geolocation) { setLocationError("Geolocation not supported."); return; }
-    navigator.geolocation.getCurrentPosition((pos) => { setUserLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracyKm: pos.coords.accuracy ? Math.round(pos.coords.accuracy / 100) / 10 : undefined }); setLocationError(""); }, () => setLocationError("Location permission denied."), { enableHighAccuracy: true, timeout: 10000 });
+    if (!navigator.geolocation) { setLocationError(tr("locNotSupported")); return; }
+    // Browsers only allow geolocation on a secure origin (https or localhost).
+    // Accessing via a LAN IP over http silently blocks it — report that clearly.
+    if (typeof window !== "undefined" && window.isSecureContext === false) {
+      setLocationError(tr("locInsecure"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracyKm: pos.coords.accuracy ? Math.round(pos.coords.accuracy / 100) / 10 : undefined,
+        });
+        setLocationError("");
+      },
+      (err) => {
+        // Report the ACTUAL failure instead of always saying "denied".
+        if (err.code === err.PERMISSION_DENIED) setLocationError(tr("locDenied"));
+        else if (err.code === err.POSITION_UNAVAILABLE) setLocationError(tr("locUnavailable"));
+        else setLocationError(tr("locTimeout"));
+      },
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function distanceKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
