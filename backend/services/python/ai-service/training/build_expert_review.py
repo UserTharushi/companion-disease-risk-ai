@@ -105,6 +105,7 @@ def predict_no_ontology(payload: SymptomPayload):
     else:
         p_danger = predictor._predict_danger(tokens)
     if p_danger is not None:
+        p_danger = feature_bridge.prior_correct(p_danger)  # mirror production calibration
         risk_level, _score = feature_bridge.derive_risk(p_danger, severity)
     else:
         risk_level, _c = predictor._rule_fallback(payload)

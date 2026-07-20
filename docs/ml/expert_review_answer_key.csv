@@ -1,40 +1,42 @@
 ﻿case_id,latent_condition,model_predicted_condition,model_risk_level
 C001,Skin Irritations,Skin Irritations,medium
-C002,Skin Irritations,Skin Irritations,medium
-C003,Skin Irritations,Skin Irritations,medium
-C004,Digestive Issues,Digestive Issues,high
-C005,Digestive Issues,Digestive Issues,high
-C006,Digestive Issues,Digestive Issues,high
+C002,Skin Irritations,Skin Irritations,low
+C003,Skin Irritations,Skin Irritations,low
+C004,Digestive Issues,Digestive Issues,medium
+C005,Digestive Issues,Digestive Issues,low
+C006,Digestive Issues,Digestive Issues,medium
 C007,Parasites,Parasites,medium
 C008,Parasites,Parasites,medium
 C009,Parasites,Parasites,medium
 C010,Ear Infections,Ear Infections,medium
-C011,Ear Infections,Ear Infections,medium
+C011,Ear Infections,Ear Infections,low
 C012,Ear Infections,Ear Infections,medium
-C013,Mobility Problems,Mobility Problems,high
-C014,Mobility Problems,Mobility Problems,high
+C013,Mobility Problems,Mobility Problems,medium
+C014,Mobility Problems,Mobility Problems,medium
 C015,Mobility Problems,Mobility Problems,medium
-C016,Chronic Kidney Disease,Chronic Kidney Disease,high
-C017,Chronic Kidney Disease,Chronic Kidney Disease,high
-C018,Chronic Kidney Disease,Chronic Kidney Disease,high
-C019,Diabetes Mellitus,Diabetes Mellitus,high
-C020,Diabetes Mellitus,Diabetes Mellitus,high
-C021,Diabetes Mellitus,Diabetes Mellitus,high
-C022,Liver Disease,Liver Disease,high
-C023,Liver Disease,Liver Disease,high
-C024,Liver Disease,Pancreatitis,high
-C025,Heart Disease,Heart Disease,high
-C026,Heart Disease,Heart Disease,high
-C027,Heart Disease,Heart Disease,high
-C028,Pancreatitis,Pancreatitis,high
-C029,Pancreatitis,Pancreatitis,high
-C030,Pancreatitis,Pancreatitis,high
-C031,Cancer,Cancer,high
-C032,Cancer,Cancer,high
-C033,Cancer,Cancer,high
+C016,Chronic Kidney Disease,Chronic Kidney Disease,medium
+C017,Chronic Kidney Disease,Chronic Kidney Disease,medium
+C018,Chronic Kidney Disease,Chronic Kidney Disease,medium
+C019,Diabetes Mellitus,Diabetes Mellitus,medium
+C020,Diabetes Mellitus,Diabetes Mellitus,medium
+C021,Diabetes Mellitus,Diabetes Mellitus,medium
+C022,Liver Disease,Liver Disease,medium
+C023,Liver Disease,Liver Disease,medium
+C024,Liver Disease,Pancreatitis,medium
+C025,Heart Disease,Heart Disease,medium
+C026,Heart Disease,Heart Disease,medium
+C027,Heart Disease,Heart Disease,medium
+C028,Pancreatitis,Pancreatitis,medium
+C029,Pancreatitis,Pancreatitis,medium
+C030,Pancreatitis,Pancreatitis,medium
+C031,Cancer,Cancer,medium
+C032,Cancer,Cancer,medium
+C033,Cancer,Cancer,medium
 C034,Non-specific / mild,Heart Disease,medium
 C035,Non-specific / mild,Digestive Issues,medium
-C036,Non-specific / mild,Skin Irritations,medium
-C037,Non-specific / mild,Heart Disease,medium
+C036,Non-specific / mild,Skin Irritations,low
+C037,Non-specific / mild,Heart Disease,low
 C038,Non-specific / mild,Pancreatitis,medium
-C039,Non-specific / mild,Ear Infections,medium
+C039,Non-specific / mild,Ear Infections,low
+C040,Non-specific / mild,Ear Infections,low
+C041,Non-specific / mild,Heart Disease,low

@@ -114,6 +114,9 @@ def predict(payload: SymptomPayload) -> PredictionResponse:
         p_danger = _predict_danger(tokens)
 
     if p_danger is not None:
+        # Correct Model B's imbalance-inflated probability before blending
+        # (fixes systematic over-triage; see feature_bridge.prior_correct).
+        p_danger = feature_bridge.prior_correct(p_danger)
         risk_level, risk_score = feature_bridge.derive_risk(p_danger, severity)
         confidence = round(max(condition_prob, p_danger), 4) if condition_prob else round(p_danger, 4)
         model_version = MODEL_VERSION

@@ -45,6 +45,34 @@ SEVERITY_INDEX: dict[str, float] = {
 RISK_HIGH_THRESHOLD = 0.66
 RISK_MEDIUM_THRESHOLD = 0.40
 
+# Model B (danger model) was trained on data that is 97.7% "dangerous"
+# (risk_metrics.json positive_rate=0.977, recall_not_dangerous=0.0), so its
+# calibrated probability is inflated for weak evidence and the system almost
+# never returned "low" risk (over-triage — see docs/ml/risk_calibration_experiment.json).
+# A Bayesian prior-shift to a neutral deployment prior decompresses the
+# probability while preserving its ranking. The 0.5 value was chosen from the
+# calibration sensitivity analysis: it recovered ~59% "low" on benign cases
+# while keeping ~99% of serious (chronic) cases at >= medium.
+DANGER_TRAIN_PRIOR = 0.977
+DANGER_DEPLOY_PRIOR = 0.5
+
+
+def prior_correct(p_danger: float,
+                  pi_deploy: float = DANGER_DEPLOY_PRIOR,
+                  pi_train: float = DANGER_TRAIN_PRIOR) -> float:
+    """Shift a probability from its training prior to a deployment prior.
+
+    Standard base-rate correction for a classifier trained on an imbalanced
+    set whose deployment prevalence differs. Ranking is preserved; only the
+    absolute calibration changes. p in {0,1} is returned unchanged.
+    """
+    if p_danger <= 0.0 or p_danger >= 1.0:
+        return p_danger
+    a = pi_deploy / pi_train
+    b = (1.0 - pi_deploy) / (1.0 - pi_train)
+    num = p_danger * a
+    return num / (num + (1.0 - p_danger) * b)
+
 
 def _vital_phrases(p: SymptomPayload) -> list[str]:
     phrases: list[str] = []
