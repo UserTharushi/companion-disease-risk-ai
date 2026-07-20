@@ -13,12 +13,12 @@ import { Dropzone } from "../components/ui/dropzone";
 import { ThemeSwitcher } from "../components/ThemeSwitcher";
 import { cn } from "../lib/utils";
 import { toast } from "../lib/use-toast";
-import { listAllAppointments, listClinics, updateAppointment } from "../lib/clinic-api";
+import { listAllAppointments, listClinics, updateAppointment, listInquiries, replyToInquiry } from "../lib/clinic-api";
 import { listAllPets, type BackendPet } from "../lib/pet-api";
 import { listVaccinations } from "../lib/vaccination-api";
 import { getPredictionHistory } from "../lib/prediction-api";
 import { getMyProfile, updateMyProfile } from "../lib/auth-api";
-import type { Appointment as BackendAppointment, VetClinic } from "@companion-ai/shared-types";
+import type { Appointment as BackendAppointment, SurgeonInquiry, VetClinic } from "@companion-ai/shared-types";
 import {
   Activity,
   AlertTriangle,
@@ -29,6 +29,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageSquare,
   PawPrint,
   Search,
   Sparkles,
@@ -40,7 +41,7 @@ import {
 
 const VET_PROFILE_KEY = "companion_ai_vet_profile";
 
-type VetSection = "overview" | "approvals" | "follow-up-reminders" | "patients" | "profile";
+type VetSection = "overview" | "approvals" | "follow-up-reminders" | "patients" | "inquiries" | "profile";
 
 interface AppointmentRow {
   id: string;
@@ -111,6 +112,7 @@ export function VeterinarianDashboardPage() {
   // ── Live data ──
   const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
   const [patients, setPatients] = useState<PatientRow[]>([]);
+  const [inquiries, setInquiries] = useState<SurgeonInquiry[]>([]);
 
   const [vetProfile, setVetProfile] = useState<VetProfile>(() => {
     const stored = loadJson<Partial<VetProfile> | null>(VET_PROFILE_KEY, null);
@@ -167,11 +169,13 @@ export function VeterinarianDashboardPage() {
   async function loadLiveData() {
     setLoading(true);
     try {
-      const [appts, clinics, pets] = await Promise.all([
+      const [appts, clinics, pets, inqs] = await Promise.all([
         listAllAppointments().catch(() => [] as BackendAppointment[]),
         listClinics().catch(() => [] as VetClinic[]),
         listAllPets().catch(() => [] as BackendPet[]),
+        listInquiries().catch(() => [] as SurgeonInquiry[]),
       ]);
+      setInquiries(inqs);
 
       const clinicById = new Map(clinics.map((clinic) => [clinic.id, clinic]));
       const surgeonById = new Map(clinics.flatMap((clinic) => clinic.surgeons.map((surgeon) => [surgeon.id, surgeon] as const)));
@@ -265,6 +269,7 @@ export function VeterinarianDashboardPage() {
   const highRiskPatients = patients.filter(
     (patient) => patient.lastRisk && patient.lastRisk.level === "high" && Date.now() - new Date(patient.lastRisk.at).getTime() < RISK_RECENT_MS,
   );
+  const openInquiries = inquiries.filter((inq) => inq.status === "open");
 
   const followUps: FollowUpRow[] = useMemo(() => {
     const rows: FollowUpRow[] = [];
@@ -321,6 +326,16 @@ export function VeterinarianDashboardPage() {
     }
   }
 
+  async function handleReplyInquiry(id: string) {
+    try {
+      const updated = await replyToInquiry(id);
+      setInquiries((prev) => prev.map((inq) => (inq.id === id ? updated : inq)));
+      toast({ title: tr("repliedStatus"), variant: "success" });
+    } catch {
+      toast({ title: tr("actionFailed"), variant: "error" });
+    }
+  }
+
   async function handleSaveProfile() {
     const normalizedName = vetProfile.name.trim() || defaultVetName;
     const nextProfile: VetProfile = { ...vetProfile, name: normalizedName };
@@ -372,6 +387,7 @@ export function VeterinarianDashboardPage() {
     { id: "approvals", label: tr("approvals"), icon: ClipboardCheck, badge: pendingAppointments.length },
     { id: "follow-up-reminders", label: tr("followUpReminders"), icon: Activity, badge: followUps.filter((f) => f.priority === "high").length },
     { id: "patients", label: tr("patients"), icon: PawPrint },
+    { id: "inquiries", label: tr("inquiries"), icon: MessageSquare, badge: openInquiries.length },
     { id: "profile", label: tr("profile"), icon: User },
   ];
 
@@ -777,6 +793,42 @@ export function VeterinarianDashboardPage() {
                 {!loading && filteredPatients.length === 0 && (
                   <div className={cn(card, "text-center text-[13px] text-accent-subtle")}>—</div>
                 )}
+              </div>
+            )}
+
+            {/* ─── Inquiries (owner → vet messaging) ─── */}
+            {activeSection === "inquiries" && (
+              <div className="animate-in">
+                <div className="mb-4">
+                  <h2 className="text-xl font-semibold text-accent dark:text-white">{tr("inquiries")}</h2>
+                  <p className="mt-0.5 text-sm text-accent-subtle dark:text-accent-faint">{tr("openInquiries")}: {openInquiries.length}</p>
+                </div>
+                <div className="space-y-2">
+                  {inquiries.length === 0 && (
+                    <div className={cn(card, "text-center text-[13px] text-accent-subtle")}>{loading ? tr("loadingData") : tr("noInquiriesYet")}</div>
+                  )}
+                  {inquiries.map((inq) => (
+                    <div key={inq.id} className={cn(card, "flex flex-wrap items-center justify-between gap-3")}>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-tertiary text-accent-subtle dark:bg-neutral-800">
+                          <MessageSquare className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-semibold text-accent dark:text-white">
+                            {inq.petName || "—"}{inq.clinicName ? ` · ${inq.clinicName}` : ""}
+                          </p>
+                          <p className="text-[12px] text-accent-subtle">{inq.message}</p>
+                          <p className="mt-0.5 text-[11px] text-accent-faint">{new Date(inq.createdAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                      {inq.status === "open" ? (
+                        <Button size="sm" variant="secondary" onClick={() => handleReplyInquiry(inq.id)}>{tr("replyAction")}</Button>
+                      ) : (
+                        <Badge variant="success">{tr("repliedStatus")}</Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

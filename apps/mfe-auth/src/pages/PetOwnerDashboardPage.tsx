@@ -29,7 +29,7 @@ import {
   updateOwnerPet,
   type BackendPet,
 } from "../lib/pet-api";
-import { createAppointment, listAppointments, listClinics, listNearbyClinics, updateAppointment, type NearbyClinic } from "../lib/clinic-api";
+import { createAppointment, listAppointments, listClinics, listNearbyClinics, updateAppointment, listInquiries, createInquiry, type NearbyClinic } from "../lib/clinic-api";
 import { getPredictionHistory, type PredictionHistoryItem } from "../lib/prediction-api";
 import { sendChatMessage } from "../lib/agent-api";
 import type { Appointment as BackendAppointment, VetClinic } from "@companion-ai/shared-types";
@@ -338,6 +338,15 @@ export function PetOwnerDashboardPage() {
 
   useEffect(() => { localStorage.setItem(appointmentsStorageKey, JSON.stringify(appointments)); }, [appointments, appointmentsStorageKey]);
   useEffect(() => { localStorage.setItem(inquiriesStorageKey, JSON.stringify(surgeonInquiries)); }, [surgeonInquiries, inquiriesStorageKey]);
+  // Inquiries are now server-backed (a vet on any device can see + reply);
+  // localStorage is just a render cache.
+  useEffect(() => {
+    let active = true;
+    listInquiries()
+      .then((items) => { if (active) setSurgeonInquiries(items as SurgeonInquiryRecord[]); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
   useEffect(() => { localStorage.setItem(CLINIC_DIRECTORY_KEY, JSON.stringify(clinics)); }, [clinics]);
   useEffect(() => {
     let active = true;
@@ -669,12 +678,22 @@ export function PetOwnerDashboardPage() {
         toast({ title: tr("failedReschedule"), description: error instanceof Error ? error.message : "Unable to update appointment", variant: "error" });
       });
   }
-  function handleSendInquiry(clinic: ClinicDirectoryRecord, surgeon: ClinicDirectoryRecord["surgeons"][number]) {
+  async function handleSendInquiry(clinic: ClinicDirectoryRecord, surgeon: ClinicDirectoryRecord["surgeons"][number]) {
     const key = `${clinic.id}_${surgeon.id}`, msg = inquiryBySurgeon[key]?.trim(); if (!msg) return;
     const pet = pets.find((p) => p.id === (bookingPetByClinic[clinic.id] || pets[0]?.id));
     if (!pet) { toast({ title: tr("addPetFirst"), variant: "error" }); return; }
-    setSurgeonInquiries((prev) => [{ id: `inq-${Date.now()}`, clinicId: clinic.id, clinicName: clinic.name, surgeonId: surgeon.id, surgeonName: surgeon.name, petId: pet.id, petName: pet.name, message: msg, status: "open", createdAt: new Date().toISOString() }, ...prev]);
-    setInquiryBySurgeon((prev) => ({ ...prev, [key]: "" })); toast({ title: tr("inquirySent"), variant: "success" });
+    try {
+      const created = await createInquiry({
+        clinicId: clinic.id, clinicName: clinic.name,
+        surgeonId: surgeon.id, surgeonName: surgeon.name,
+        petId: pet.id, petName: pet.name, message: msg,
+      });
+      setSurgeonInquiries((prev) => [created as SurgeonInquiryRecord, ...prev]);
+      setInquiryBySurgeon((prev) => ({ ...prev, [key]: "" }));
+      toast({ title: tr("inquirySent"), variant: "success" });
+    } catch (err) {
+      toast({ title: tr("actionFailed"), description: (err as Error).message, variant: "error" });
+    }
   }
   async function handleSendMessage() {
     const text = chatInput.trim();

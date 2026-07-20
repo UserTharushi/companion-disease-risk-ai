@@ -71,6 +71,7 @@ app.use("/api/auth",         proxyTo(AUTH_URL));
 app.use("/api/pets",         proxyTo(PET_URL));
 app.use("/api/clinics",      proxyTo(CLINIC_URL));
 app.use("/api/appointments", proxyTo(CLINIC_URL));
+app.use("/api/inquiries",    proxyTo(CLINIC_URL));
 app.use("/api/notifications",proxyTo(NOTIFICATION_URL));
 app.use("/api/vaccinations", proxyTo(VACCINATION_URL));
 // AI service serves /predict without the /api prefix

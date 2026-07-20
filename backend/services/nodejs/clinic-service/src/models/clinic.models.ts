@@ -98,10 +98,40 @@ const AppointmentSchema = new Schema<AppointmentDocument>(
   { timestamps: true }
 );
 
+export interface InquiryDocument extends Document {
+  ownerId: string;
+  clinicId: string;
+  clinicName: string;
+  surgeonId: string;
+  surgeonName: string;
+  petId: string;
+  petName: string;
+  message: string;
+  reply?: string;
+  status: "open" | "replied";
+}
+
+const InquirySchema = new Schema<InquiryDocument>(
+  {
+    ownerId: { type: String, required: true, index: true },
+    clinicId: { type: String, required: true, index: true },
+    clinicName: { type: String, default: "" },
+    surgeonId: { type: String, default: "", index: true },
+    surgeonName: { type: String, default: "" },
+    petId: { type: String, default: "" },
+    petName: { type: String, default: "" },
+    message: { type: String, required: true },
+    reply: { type: String },
+    status: { type: String, enum: ["open", "replied"], default: "open" },
+  },
+  { timestamps: true }
+);
+
 export const ClinicModel = model<ClinicDocument>("Clinic", ClinicSchema);
 export const SurgeonModel = model<SurgeonDocument>("Surgeon", SurgeonSchema);
 export const TimeSlotModel = model<TimeSlotDocument>("TimeSlot", TimeSlotSchema);
 export const AppointmentModel = model<AppointmentDocument>("Appointment", AppointmentSchema);
+export const InquiryModel = model<InquiryDocument>("Inquiry", InquirySchema);
 
 function dayAt(hour: number, offsetDays = 0): string {
   const date = new Date();

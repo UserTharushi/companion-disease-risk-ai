@@ -5,6 +5,7 @@ import morgan from "morgan";
 import mongoose from "mongoose";
 import { clinicRouter } from "./routes/clinic.routes";
 import { appointmentRouter } from "./routes/appointment.routes";
+import { inquiryRouter } from "./routes/inquiry.routes";
 import { errorHandler } from "./middleware/errorHandler";
 import { seedClinicData } from "./models/clinic.models";
 
@@ -44,6 +45,7 @@ connectMongoWithFallback();
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "clinic-service" }));
 app.use("/api/clinics",      clinicRouter);
 app.use("/api/appointments", appointmentRouter);
+app.use("/api/inquiries",    inquiryRouter);
 app.use(errorHandler);
 
 export default app;

@@ -159,6 +159,23 @@ export interface Appointment {
   createdAt: string;
 }
 
+// ── Surgeon inquiry (owner ↔ vet messaging) ────
+export interface SurgeonInquiry {
+  id: string;
+  ownerId: string;
+  clinicId: string;
+  clinicName: string;
+  surgeonId: string;
+  surgeonName: string;
+  petId: string;
+  petName: string;
+  message: string;
+  reply?: string | null;
+  status: "open" | "replied";
+  createdAt: string;
+  updatedAt?: string;
+}
+
 // ── API Responses ─────────────────────────────
 export interface ApiResponse<T> {
   success: boolean;

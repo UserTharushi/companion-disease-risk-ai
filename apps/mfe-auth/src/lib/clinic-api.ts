@@ -1,4 +1,4 @@
-import type { Appointment, VetClinic } from "@companion-ai/shared-types";
+import type { Appointment, SurgeonInquiry, VetClinic } from "@companion-ai/shared-types";
 import { getAccessToken } from "./session";
 
 const API_BASE_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
@@ -95,6 +95,34 @@ export async function addTimeSlot(surgeonId: string, datetime: string, durationM
   return request<unknown>(`/api/clinics/surgeons/${surgeonId}/slots`, {
     method: "POST",
     body: JSON.stringify({ datetime, durationMins }),
+  });
+}
+
+// ── Surgeon inquiries (owner ↔ vet messaging) ──
+
+export async function listInquiries(params?: { status?: string }): Promise<SurgeonInquiry[]> {
+  const suffix = params?.status ? `?status=${encodeURIComponent(params.status)}` : "";
+  return request<SurgeonInquiry[]>(`/api/inquiries${suffix}`);
+}
+
+export type InquiryWritePayload = {
+  clinicId: string;
+  clinicName?: string;
+  surgeonId?: string;
+  surgeonName?: string;
+  petId?: string;
+  petName?: string;
+  message: string;
+};
+
+export async function createInquiry(payload: InquiryWritePayload): Promise<SurgeonInquiry> {
+  return request<SurgeonInquiry>(`/api/inquiries`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function replyToInquiry(inquiryId: string, reply?: string): Promise<SurgeonInquiry> {
+  return request<SurgeonInquiry>(`/api/inquiries/${inquiryId}/reply`, {
+    method: "PATCH",
+    body: JSON.stringify({ reply: reply ?? "" }),
   });
 }
 
