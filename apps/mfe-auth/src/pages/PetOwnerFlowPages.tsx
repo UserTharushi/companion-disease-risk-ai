@@ -488,13 +488,8 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
   const [selectedPetId, setSelectedPetId] = useState(pets[0]?.id ?? "");
   const [clinicRating, setClinicRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
-  const [selectedDay, setSelectedDay] = useState("Mon 12");
   const [bookingError, setBookingError] = useState("");
   const selectedSurgeon = clinic.surgeons.find((s) => s.id === selectedSurgeonId) ?? clinic.surgeons[0];
-  const scheduleDays = ["Mon 12", "Tue 13", "Wed 14", "Thu 15"];
-  const consultationFee = 45;
-  const adminFee = 5;
-  const total = consultationFee + adminFee;
 
   if (!pets.length) {
     return (
@@ -557,7 +552,11 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
                 <p className="text-[13px] font-semibold text-accent">{clinic.reviews} {language === "si" ? "සමාලෝචන" : language === "ta" ? "மதிப்புரைகள்" : "Reviews"}</p>
               </div>
             </div>
-            <p className="mt-1 text-warning-fg">★★★★★</p>
+            <div className="mt-1 flex gap-0.5">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Star key={n} className={`h-4 w-4 ${n <= Math.round(clinic.rating) ? "fill-warning-fg text-warning-fg" : "text-border-strong"}`} />
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -576,24 +575,6 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
           ))}
         </div>
 
-        <div className="mt-5">
-          <p className="text-base font-semibold text-accent">{language === "si" ? "කාලසටහන තෝරන්න" : language === "ta" ? "அட்டவணையைத் தேர்ந்தெடுக்கவும்" : "Select Schedule"}</p>
-          <p className="mt-1 text-sm text-accent-subtle">{new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })}</p>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {scheduleDays.map((day) => (
-              <button
-                key={day}
-                type="button"
-                onClick={() => setSelectedDay(day)}
-                className={`rounded-2xl border px-2 py-3 text-center transition ${selectedDay === day ? "border-primary bg-primary text-white" : "border-border bg-surface text-accent dark:border-neutral-700 dark:bg-neutral-950"}`}
-              >
-                <p className="text-xs uppercase">{day.split(" ")[0]}</p>
-                <p className="text-lg font-semibold">{day.split(" ")[1]}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
         <div className="mt-4 space-y-2">
           <Label className="text-sm">{language === "si" ? "සුරතලය තෝරන්න" : language === "ta" ? "செல்லப்பிராணியைத் தேர்ந்தெடுக்கவும்" : "Select Pet"}</Label>
           <select className={selectClass} value={selectedPetId} onChange={(e) => setSelectedPetId(e.target.value)}>
@@ -609,15 +590,6 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
                 {slot}
               </button>
             ))}
-          </div>
-        </div>
-
-        <div className="mt-5 rounded-2xl border border-border bg-surface p-4 dark:border-neutral-700 dark:bg-neutral-950">
-          <h4 className="text-lg font-semibold text-accent">{language === "si" ? "බුකින් සාරාංශය" : language === "ta" ? "முன்பதிவு சுருக்கம்" : "Booking Summary"}</h4>
-          <div className="mt-3 space-y-2 text-sm">
-            <div className="flex items-center justify-between"><span className="text-accent-subtle">{language === "si" ? "උපදේශන ගාස්තුව" : language === "ta" ? "ஆலோசனை கட்டணம்" : "Consultation Fee"}</span><span className="font-semibold text-accent">${consultationFee.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span className="text-accent-subtle">{language === "si" ? "පරිපාලන ගාස්තු" : language === "ta" ? "நிர்வாகக் கட்டணம்" : "Admin Charges"}</span><span className="font-semibold text-accent">${adminFee.toFixed(2)}</span></div>
-            <div className="mt-2 border-t border-border pt-2 flex items-center justify-between"><span className="text-base font-semibold text-accent">{language === "si" ? "මුළු මුදල" : language === "ta" ? "மொத்த தொகை" : "Total Amount"}</span><span className="text-xl font-bold text-primary">${total.toFixed(2)}</span></div>
           </div>
         </div>
 
