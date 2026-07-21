@@ -17,7 +17,6 @@ export default defineConfig({
       shared: ["react", "react-dom", "react-router-dom", "zustand"],
     }),
       VitePWA({
-        disable: true,
         registerType: "autoUpdate",
         includeAssets: ["favicon.ico", "apple-touch-icon.png", "pwa-192.png", "pwa-512.png"],
         manifest: {
@@ -45,7 +44,9 @@ export default defineConfig({
             },
           ],
         },
-        devOptions: { enabled: false },
+        // The container serves `vite dev`, so enable the SW there too (otherwise
+        // the PWA is only active in a production build).
+        devOptions: { enabled: true, type: "module" },
       }),
   ],
   build: { target: "esnext", minify: false, cssCodeSplit: false },
