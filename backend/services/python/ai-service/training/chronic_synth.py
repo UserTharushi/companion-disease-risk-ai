@@ -21,7 +21,34 @@ SERVICE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVICE_DIR))
 
 from app.schemas.prediction import SymptomPayload  # noqa: E402
-from app.services.feature_bridge import payload_to_text  # noqa: E402
+from app.services.feature_bridge import payload_to_text, ideal_weight_range  # noqa: E402
+
+DOG_BREEDS = ["Labrador", "German Shepherd", "Beagle", "Bulldog", "Poodle",
+              "Rottweiler", "Chihuahua", "Cocker Spaniel", "Golden Retriever", "Pomeranian"]
+CAT_BREEDS = ["Domestic Shorthair", "Persian", "Siamese", "Maine Coon", "British Shorthair", "Ragdoll"]
+
+# Documented body-condition tendency per disease (obesity is a risk factor for
+# diabetes/pancreatitis; cachexia/weight loss accompanies CKD and cancer).
+WEIGHT_BIAS = {
+    "Chronic Kidney Disease": "under",
+    "Diabetes Mellitus": "over",
+    "Liver Disease": "ideal",
+    "Heart Disease": "ideal",
+    "Pancreatitis": "over",
+    "Cancer": "under",
+}
+
+
+def _sample_breed_weight(rng: random.Random, species: str, bias: str) -> tuple[str, float]:
+    breed = rng.choice(CAT_BREEDS if species == "cat" else DOG_BREEDS)
+    lo, hi = ideal_weight_range(species, breed)
+    if bias == "under":
+        weight = rng.uniform(lo * 0.6, lo * 0.82)
+    elif bias == "over":
+        weight = rng.uniform(hi * 1.18, hi * 1.5)
+    else:
+        weight = rng.uniform(lo, hi)
+    return breed, round(weight, 1)
 
 # Each field: value -> probability of appearing. "symptoms" lists (id, prob).
 CHRONIC_PROFILES: dict[str, dict] = {
@@ -160,9 +187,13 @@ def generate_chronic_rows(per_disease: int = 450, seed: int = 42) -> list[dict]:
     for disease, profile in CHRONIC_PROFILES.items():
         for _ in range(per_disease):
             symptoms = [sid for sid, prob in profile["symptoms"] if rng.random() < prob]
+            species = _pick(rng, profile["species"])
+            breed, weight = _sample_breed_weight(rng, species, WEIGHT_BIAS.get(disease, "ideal"))
             payload = SymptomPayload(
                 pet_id="synth",
-                species=_pick(rng, profile["species"]),
+                species=species,
+                breed=breed,
+                weight_kg=weight,
                 age_years=float(rng.randint(*profile["age"])),
                 appetite_level=_pick(rng, profile["appetite_level"]),
                 water_intake=_pick(rng, profile["water_intake"]),

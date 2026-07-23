@@ -105,11 +105,60 @@ def _vital_phrases(p: SymptomPayload) -> list[str]:
     return phrases
 
 
+# Coarse breed size classes -> ideal adult weight range (kg). Used to turn a
+# raw weight into a body-condition word the model can learn from. Heuristic,
+# documented as such; unknown breeds fall back to a medium dog / cat default.
+_BREED_SIZE = {
+    "chihuahua": "small", "pomeranian": "small", "shih tzu": "small", "beagle": "small",
+    "dachshund": "small", "pug": "small", "yorkshire terrier": "small", "maltese": "small",
+    "cocker spaniel": "medium", "bulldog": "medium", "border collie": "medium",
+    "labrador": "large", "labrador retriever": "large", "golden retriever": "large",
+    "german shepherd": "large", "rottweiler": "large", "doberman": "large", "boxer": "large",
+    "great dane": "giant", "saint bernard": "giant", "mastiff": "giant",
+}
+_IDEAL_KG = {
+    "cat": (3.0, 6.0), "small": (2.0, 10.0), "medium": (10.0, 25.0),
+    "large": (25.0, 40.0), "giant": (40.0, 70.0),
+}
+
+
+def _size_class(p: SymptomPayload) -> str:
+    if (p.species or "").lower() == "cat":
+        return "cat"
+    return _BREED_SIZE.get((p.breed or "").strip().lower(), "medium")
+
+
+def ideal_weight_range(species: str, breed: str) -> tuple[float, float]:
+    """Ideal adult weight (kg) for a species/breed — shared by the synthetic
+    training generator so generated weights match serve-time thresholds."""
+    if (species or "").lower() == "cat":
+        return _IDEAL_KG["cat"]
+    return _IDEAL_KG[_BREED_SIZE.get((breed or "").strip().lower(), "medium")]
+
+
+def body_condition(p: SymptomPayload) -> str | None:
+    """Underweight / overweight / None(ideal), from weight relative to breed size."""
+    if not p.weight_kg or p.weight_kg <= 0:
+        return None
+    lo, hi = _IDEAL_KG[_size_class(p)]
+    if p.weight_kg < lo * 0.85:
+        return "underweight"
+    if p.weight_kg > hi * 1.15:
+        return "overweight"
+    return None
+
+
 def payload_to_text(p: SymptomPayload) -> str:
     """Render the structured payload into an owner-style sentence for Model A."""
     animal = p.species.lower() if p.species else "pet"
+    breed = (p.breed or "").strip()
+    if breed:
+        animal = f"{breed} {animal}"
     if p.age_years is not None and p.age_years > 0:
         animal = f"{int(p.age_years)} year old {animal}"
+    condition = body_condition(p)
+    if condition:
+        animal = f"{condition} {animal}"
     parts = _vital_phrases(p)
     checklist = [CHECKLIST_TOKENS[s] for s in p.symptoms if s in CHECKLIST_TOKENS]
     if checklist:

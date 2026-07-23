@@ -34,7 +34,7 @@ sys.path.insert(0, str(SERVICE_DIR))
 
 from app.schemas.prediction import SymptomPayload  # noqa: E402
 from app.services.feature_bridge import payload_to_text  # noqa: E402
-from chronic_synth import generate_chronic_rows  # noqa: E402
+from chronic_synth import generate_chronic_rows, _sample_breed_weight  # noqa: E402
 
 REPO_ROOT = SERVICE_DIR.parents[3]
 RAW_CSV = REPO_ROOT / "data" / "raw" / "pet_health_symptoms.csv"
@@ -68,9 +68,14 @@ def build_augmented_rows(n_target: int = 500) -> pd.DataFrame:
     rows = []
     while len(rows) < n_target:
         overrides, label = rng.choice(AUGMENT_RECIPES)
+        species = next(species_cycle)
+        # obesity stresses joints -> bias Mobility Problems overweight; others ideal
+        breed, weight = _sample_breed_weight(rng, species, "over" if label == "Mobility Problems" else "ideal")
         payload = SymptomPayload(
             pet_id="aug",
-            species=next(species_cycle),
+            species=species,
+            breed=breed,
+            weight_kg=weight,
             appetite_level=overrides.get("appetite_level", "normal"),
             water_intake=overrides.get("water_intake", "normal"),
             activity_level=overrides.get("activity_level", "normal"),

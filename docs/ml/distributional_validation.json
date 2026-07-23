@@ -3,8 +3,8 @@
   "n": 800,
   "seed": 7,
   "prevalence_source": "PLACEHOLDER (illustrative, NOT real data)",
-  "spearman_rho_prevalence_vs_predicted": 0.9264,
-  "population_recovery_accuracy": 0.9975,
+  "spearman_rho_prevalence_vs_predicted": 0.9493,
+  "population_recovery_accuracy": 0.9912,
   "per_class": [
     {
       "class": "Skin Irritations",
@@ -51,48 +51,48 @@
       "prevalence_share": 0.06,
       "predicted_share": 0.055,
       "prevalence_rank": 6.0,
-      "predicted_rank": 6.0,
-      "rank_delta": 0.0
+      "predicted_rank": 7.0,
+      "rank_delta": 1.0
     },
     {
       "class": "Liver Disease",
       "prevalence_share": 0.05,
-      "predicted_share": 0.0512,
+      "predicted_share": 0.0575,
       "prevalence_rank": 7.5,
-      "predicted_rank": 8.0,
-      "rank_delta": 0.5
+      "predicted_rank": 6.0,
+      "rank_delta": -1.5
     },
     {
       "class": "Heart Disease",
       "prevalence_share": 0.05,
       "predicted_share": 0.05,
       "prevalence_rank": 7.5,
-      "predicted_rank": 9.0,
-      "rank_delta": 1.5
+      "predicted_rank": 8.5,
+      "rank_delta": 1.0
     },
     {
       "class": "Diabetes Mellitus",
       "prevalence_share": 0.04,
       "predicted_share": 0.0362,
       "prevalence_rank": 10.0,
-      "predicted_rank": 11.0,
-      "rank_delta": 1.0
-    },
-    {
-      "class": "Pancreatitis",
-      "prevalence_share": 0.04,
-      "predicted_share": 0.0375,
-      "prevalence_rank": 10.0,
       "predicted_rank": 10.0,
       "rank_delta": 0.0
     },
     {
+      "class": "Pancreatitis",
+      "prevalence_share": 0.04,
+      "predicted_share": 0.0338,
+      "prevalence_rank": 10.0,
+      "predicted_rank": 11.0,
+      "rank_delta": 1.0
+    },
+    {
       "class": "Cancer",
       "prevalence_share": 0.04,
-      "predicted_share": 0.0525,
+      "predicted_share": 0.05,
       "prevalence_rank": 10.0,
-      "predicted_rank": 7.0,
-      "rank_delta": -3.0
+      "predicted_rank": 8.5,
+      "rank_delta": -1.5
     }
   ],
   "latent_to_predicted_confusion": {
@@ -126,10 +126,12 @@
       "Heart Disease": 40
     },
     "Pancreatitis": {
-      "Pancreatitis": 30
+      "Pancreatitis": 27,
+      "Liver Disease": 3
     },
     "Cancer": {
-      "Cancer": 42
+      "Cancer": 40,
+      "Liver Disease": 2
     }
   }
 }

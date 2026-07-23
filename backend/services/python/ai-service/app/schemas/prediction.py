@@ -11,7 +11,9 @@ class SymptomPayload(BaseModel):
     pet_id: str
     owner_id: Optional[str] = None
     species: str = "dog"
+    breed: str = ""
     age_years: Optional[float] = None
+    weight_kg: Optional[float] = None
     appetite_level: str
     water_intake: str = "normal"
     activity_level: str

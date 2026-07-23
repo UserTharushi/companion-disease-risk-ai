@@ -16,7 +16,9 @@ export type PredictionVitals = {
 export type PredictionInput = {
   petId: string;
   species?: string;
+  breed?: string;
   ageYears?: number;
+  weightKg?: number;
   vitals: PredictionVitals;
   symptoms: string[];
   notes: string;
@@ -63,7 +65,9 @@ export function buildPredictionPayload(input: PredictionInput) {
     pet_id: input.petId,
     owner_id: getOwnerId(),
     species: input.species || "dog",
+    breed: input.breed || "",
     age_years: input.ageYears ?? null,
+    weight_kg: input.weightKg ?? null,
     // Values are already the backend enums (chosen from clear per-field options)
     appetite_level: input.vitals.appetiteLevel || "normal",
     water_intake: input.vitals.waterIntake || "normal",

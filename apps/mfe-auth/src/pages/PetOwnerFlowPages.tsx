@@ -854,7 +854,9 @@ export function SymptomReportPage() {
     const predictionInput = {
       petId: pet.id,
       species: pet.species,
+      breed: pet.breed || undefined,
       ageYears: Number.parseFloat(pet.age) || undefined,
+      weightKg: Number.parseFloat(pet.weightKg) || undefined,
       vitals,
       symptoms,
       notes,

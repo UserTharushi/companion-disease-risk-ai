@@ -1,14 +1,14 @@
 {
   "method": "knowledge-consistency (ontology INDICATES vs Model A prediction)",
   "ontology_source": "ontology/neo4j/schema.cypher",
-  "randomised_n_per_disease": 200,
+  "randomised_n_per_disease": 150,
   "seed": 11,
   "summary": {
     "n_diseases_tested": 11,
-    "canonical_top1_agreement_rate": 0.8182,
+    "canonical_top1_agreement_rate": 0.7273,
     "canonical_top3_agreement_rate": 0.9091,
-    "mean_randomised_top1_agreement": 0.7655,
-    "mean_randomised_top3_agreement": 0.8932,
+    "mean_randomised_top1_agreement": 0.7018,
+    "mean_randomised_top3_agreement": 0.88,
     "mean_sign_coverage_in_form": 0.9291
   },
   "per_disease": [
@@ -27,8 +27,8 @@
       ],
       "canonical_top1_agree": true,
       "canonical_top3_agree": true,
-      "randomised_top1_agreement": 0.91,
-      "randomised_top3_agreement": 1.0,
+      "randomised_top1_agreement": 0.92,
+      "randomised_top3_agreement": 0.92,
       "most_common_disagreement": "Diabetes Mellitus"
     },
     {
@@ -48,8 +48,8 @@
       ],
       "canonical_top1_agree": true,
       "canonical_top3_agree": true,
-      "randomised_top1_agreement": 0.495,
-      "randomised_top3_agreement": 0.965,
+      "randomised_top1_agreement": 0.46,
+      "randomised_top3_agreement": 0.9667,
       "most_common_disagreement": "Diabetes Mellitus"
     },
     {
@@ -81,12 +81,12 @@
       "sign_coverage_in_form": 1.0,
       "canonical_prediction_top3": [
         "Digestive Issues",
-        "Chronic Kidney Disease",
+        "Liver Disease",
         "Pancreatitis"
       ],
       "canonical_top1_agree": true,
       "canonical_top3_agree": true,
-      "randomised_top1_agreement": 0.835,
+      "randomised_top1_agreement": 0.96,
       "randomised_top3_agreement": 1.0,
       "most_common_disagreement": "Chronic Kidney Disease"
     },
@@ -121,11 +121,11 @@
       "canonical_prediction_top3": [
         "Heart Disease",
         "Pancreatitis",
-        "Mobility Problems"
+        "Liver Disease"
       ],
       "canonical_top1_agree": true,
       "canonical_top3_agree": true,
-      "randomised_top1_agreement": 0.995,
+      "randomised_top1_agreement": 0.9933,
       "randomised_top3_agreement": 1.0,
       "most_common_disagreement": "Pancreatitis"
     },
@@ -144,9 +144,9 @@
       ],
       "canonical_top1_agree": true,
       "canonical_top3_agree": true,
-      "randomised_top1_agreement": 0.905,
+      "randomised_top1_agreement": 0.9667,
       "randomised_top3_agreement": 1.0,
-      "most_common_disagreement": "Pancreatitis"
+      "most_common_disagreement": "Digestive Issues"
     },
     {
       "disease": "Mobility Problems",
@@ -158,12 +158,12 @@
       "canonical_prediction_top3": [
         "Heart Disease",
         "Mobility Problems",
-        "Cancer"
+        "Liver Disease"
       ],
       "canonical_top1_agree": false,
       "canonical_top3_agree": true,
-      "randomised_top1_agreement": 0.45,
-      "randomised_top3_agreement": 0.93,
+      "randomised_top1_agreement": 0.42,
+      "randomised_top3_agreement": 0.9067,
       "most_common_disagreement": "Heart Disease"
     },
     {
@@ -175,15 +175,15 @@
       ],
       "sign_coverage_in_form": 1.0,
       "canonical_prediction_top3": [
-        "Pancreatitis",
         "Digestive Issues",
-        "Chronic Kidney Disease"
+        "Liver Disease",
+        "Pancreatitis"
       ],
-      "canonical_top1_agree": true,
+      "canonical_top1_agree": false,
       "canonical_top3_agree": true,
-      "randomised_top1_agreement": 0.83,
-      "randomised_top3_agreement": 0.93,
-      "most_common_disagreement": "Chronic Kidney Disease"
+      "randomised_top1_agreement": 0.0,
+      "randomised_top3_agreement": 0.8867,
+      "most_common_disagreement": "Digestive Issues"
     },
     {
       "disease": "Parasites",
@@ -195,15 +195,15 @@
       ],
       "sign_coverage_in_form": 0.75,
       "canonical_prediction_top3": [
-        "Pancreatitis",
         "Liver Disease",
+        "Pancreatitis",
         "Cancer"
       ],
       "canonical_top1_agree": false,
       "canonical_top3_agree": false,
       "randomised_top1_agreement": 0.0,
       "randomised_top3_agreement": 0.0,
-      "most_common_disagreement": "Digestive Issues"
+      "most_common_disagreement": "Liver Disease"
     },
     {
       "disease": "Skin Irritations",
@@ -216,7 +216,7 @@
       "canonical_prediction_top3": [
         "Skin Irritations",
         "Parasites",
-        "Ear Infections"
+        "Liver Disease"
       ],
       "canonical_top1_agree": true,
       "canonical_top3_agree": true,
