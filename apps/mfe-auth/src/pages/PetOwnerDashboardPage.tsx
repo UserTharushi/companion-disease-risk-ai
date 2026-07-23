@@ -1486,8 +1486,18 @@ export function PetOwnerDashboardPage() {
                 ) : nearbyClinics.map((clinic) => (
                   <div key={clinic.id} className="rounded-xl border border-border/80 bg-surface dark:border-neutral-800 dark:bg-neutral-900">
                     <div className="flex items-start justify-between p-5">
-                      <div><button type="button" onClick={() => navigate(`/pets/clinic/${clinic.id}`)} className="text-left"><p className="text-[14px] font-semibold text-accent dark:text-white hover:underline">{clinic.name}</p></button><p className="mt-0.5 text-[12px] text-accent-subtle">{clinic.address} &middot; {clinic.phone}</p><Badge variant="info" className="mt-1.5">{clinic.specialization}</Badge>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate(`/pets/clinic/${clinic.id}`)}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/pets/clinic/${clinic.id}`); } }}
+                        className="group flex-1 cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <p className="text-[14px] font-semibold text-accent dark:text-white group-hover:underline">{clinic.name}</p>
+                        <p className="mt-0.5 text-[12px] text-accent-subtle">{clinic.address} &middot; {clinic.phone}</p>
+                        <Badge variant="info" className="mt-1.5">{clinic.specialization}</Badge>
                         {userLocation && typeof clinic.latitude === "number" && typeof clinic.longitude === "number" && <p className="mt-1 text-[11px] text-accent-faint">{distanceKm(userLocation.latitude, userLocation.longitude, clinic.latitude, clinic.longitude).toFixed(1)} km away</p>}
+                        <p className="mt-1.5 text-[11px] font-medium text-primary group-hover:underline">{language === "si" ? "විස්තර බලන්න →" : language === "ta" ? "விவரங்களைக் காண்க →" : "View details →"}</p>
                       </div>
                       <div className="space-y-1.5"><Label className="text-[11px]">{language === "si" ? "සුරතලා" : language === "ta" ? "பிராணி" : "Pet"}</Label><select value={bookingPetByClinic[clinic.id] || pets[0]?.id || ""} onChange={(e) => setBookingPetByClinic((p) => ({ ...p, [clinic.id]: e.target.value }))} disabled={!pets.length} className="h-7 rounded border border-border px-2 text-xs focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">{pets.length ? pets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>) : <option value="">{tr("addPetFirst")}</option>}</select></div>
                     </div>

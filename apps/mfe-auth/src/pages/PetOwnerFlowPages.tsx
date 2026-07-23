@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Calendar, Camera, Check, MapPin, Phone, Share2, Star, Stethoscope, Upload } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Calendar, Camera, Check, Mail, MapPin, Phone, Share2, Stethoscope, Upload } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
@@ -15,8 +15,6 @@ import { createVaccination, listVaccinations, type VaccinationRecord } from "../
 import { toast } from "../lib/use-toast";
 import { Disclaimer } from "../components/Disclaimer";
 import petBuddyImage from "../assets/images/pet-buddy.jpg";
-import authVetConsultImage from "../assets/images/auth-vet-consult.jpg";
-import onboardingVaccineImage from "../assets/images/onboarding-vaccine.jpg";
 
 type Pet = {
   id: string;
@@ -36,7 +34,7 @@ type Surgeon = {
   id: string;
   name: string;
   specialization: string;
-  avatar: string;
+  qualifications: string[];
   slots: string[];
   slotRecords?: Array<{ id: string; label: string }>;
 };
@@ -46,9 +44,11 @@ type Clinic = {
   name: string;
   address: string;
   phone: string;
-  image: string;
-  rating: number;
-  reviews: number;
+  email?: string;
+  specializations: string[];
+  isOpen: boolean;
+  latitude?: number;
+  longitude?: number;
   surgeons: Surgeon[];
 };
 
@@ -87,21 +87,21 @@ function formatSlotLabel(datetime: string) {
 }
 
 function mapClinicDirectory(clinics: Awaited<ReturnType<typeof listClinics>>): Clinic[] {
-  const images = [authVetConsultImage, onboardingVaccineImage, petBuddyImage];
-
-  return clinics.map((clinic, index) => ({
+  return clinics.map((clinic) => ({
     id: clinic.id,
     name: clinic.name,
     address: clinic.address,
     phone: clinic.phone,
-    image: images[index % images.length],
-    rating: clinic.rating,
-    reviews: clinic.reviewCount,
+    email: clinic.email,
+    specializations: clinic.specializations ?? [],
+    isOpen: clinic.isOpen,
+    latitude: clinic.latitude,
+    longitude: clinic.longitude,
     surgeons: clinic.surgeons.map((surgeon) => ({
       id: surgeon.id,
       name: surgeon.name,
       specialization: surgeon.specialization,
-      avatar: surgeon.photoURL || images[index % images.length],
+      qualifications: surgeon.qualifications ?? [],
       slots: surgeon.availableSlots.filter((slot) => !slot.isBooked).map((slot) => formatSlotLabel(slot.datetime)),
       slotRecords: surgeon.availableSlots.filter((slot) => !slot.isBooked).map((slot) => ({ id: slot.id, label: formatSlotLabel(slot.datetime) })),
     })),
@@ -482,14 +482,32 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
   const pets = useFlowPets();
   const clinics = useClinicDirectory();
   const resolvedClinicId = clinicIdOverride ?? clinicId;
+  // The clinic directory loads asynchronously — on the first render it is
+  // still empty, so `clinic` can be undefined. Everything below must tolerate
+  // that until the guard returns a loading state.
   const clinic = clinics.find((c) => c.id === resolvedClinicId) ?? clinics[0];
-  const [selectedSurgeonId, setSelectedSurgeonId] = useState(clinic.surgeons[0]?.id ?? "");
+  const [selectedSurgeonId, setSelectedSurgeonId] = useState("");
   const [selectedSlot, setSelectedSlot] = useState("");
   const [selectedPetId, setSelectedPetId] = useState(pets[0]?.id ?? "");
-  const [clinicRating, setClinicRating] = useState(0);
-  const [reviewText, setReviewText] = useState("");
   const [bookingError, setBookingError] = useState("");
-  const selectedSurgeon = clinic.surgeons.find((s) => s.id === selectedSurgeonId) ?? clinic.surgeons[0];
+  const selectedSurgeon = clinic?.surgeons.find((s) => s.id === selectedSurgeonId) ?? clinic?.surgeons[0];
+
+  // Default the surgeon selection once the clinic resolves (and keep it valid
+  // if the resolved clinic changes).
+  useEffect(() => {
+    if (clinic && !clinic.surgeons.some((s) => s.id === selectedSurgeonId)) {
+      setSelectedSurgeonId(clinic.surgeons[0]?.id ?? "");
+    }
+  }, [clinic, selectedSurgeonId]);
+
+  if (!clinic) {
+    return (
+      <EmptyPetState
+        title={language === "si" ? "ක්ලිනික් විස්තර" : language === "ta" ? "கிளினிக் விவரம்" : "Clinic Details"}
+        message={language === "si" ? "ක්ලිනික තොරතුරු පූරණය වෙමින්..." : language === "ta" ? "கிளினிக் தகவல் ஏற்றப்படுகிறது..." : "Loading clinic information..."}
+      />
+    );
+  }
 
   if (!pets.length) {
     return (
@@ -535,77 +553,91 @@ export function ClinicDetailsPage({ embedded = false, clinicIdOverride, onBack }
       });
   }
 
+  const directionsUrl =
+    clinic.latitude != null && clinic.longitude != null
+      ? `https://www.google.com/maps/dir/?api=1&destination=${clinic.latitude},${clinic.longitude}`
+      : null;
+
   const content = (
     <>
-      <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <img src={clinic.image} alt={clinic.name} className="h-52 w-full object-cover sm:h-60" />
-        <div className="space-y-3 p-4">
-          <div className="flex items-center gap-2"><Badge variant="info">{language === "si" ? "ඉහළම ශ්‍රේණිගත" : language === "ta" ? "சிறந்த மதிப்பீடு" : "Top Rated"}</Badge><h2 className="text-[15px] font-semibold text-accent">{clinic.name}</h2></div>
-          <div>
-            <p className="flex items-center gap-2 text-sm text-accent-subtle"><MapPin className="h-4 w-4" />{clinic.address}</p>
-          </div>
-          <p className="flex items-center gap-2 text-sm text-accent"><Phone className="h-4 w-4" />{clinic.phone}</p>
-          <div className="rounded-2xl border border-border bg-surface-tertiary p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-2xl font-semibold text-accent">{clinic.rating}</p>
-              <div className="text-right">
-                <p className="text-[13px] font-semibold text-accent">{clinic.reviews} {language === "si" ? "සමාලෝචන" : language === "ta" ? "மதிப்புரைகள்" : "Reviews"}</p>
-              </div>
-            </div>
-            <div className="mt-1 flex gap-0.5">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <Star key={n} className={`h-4 w-4 ${n <= Math.round(clinic.rating) ? "fill-warning-fg text-warning-fg" : "text-border-strong"}`} />
-              ))}
-            </div>
-          </div>
+      <section className={cardClassP4}>
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-lg font-semibold text-accent">{clinic.name}</h2>
+          <Badge variant={clinic.isOpen ? "success" : "outline"}>
+            {clinic.isOpen
+              ? (language === "si" ? "විවෘතයි" : language === "ta" ? "திறந்துள்ளது" : "Open")
+              : (language === "si" ? "වසා ඇත" : language === "ta" ? "மூடப்பட்டுள்ளது" : "Closed")}
+          </Badge>
         </div>
+
+        {clinic.specializations.length ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {clinic.specializations.map((s) => <Badge key={s} variant="info">{s}</Badge>)}
+          </div>
+        ) : null}
+
+        <div className="mt-3 space-y-2 text-sm">
+          <p className="flex items-center gap-2 text-accent-subtle"><MapPin className="h-4 w-4 shrink-0" />{clinic.address}</p>
+          <p className="flex items-center gap-2 text-accent"><Phone className="h-4 w-4 shrink-0" /><a href={`tel:${clinic.phone}`} className="hover:underline">{clinic.phone}</a></p>
+          {clinic.email ? <p className="flex items-center gap-2 text-accent"><Mail className="h-4 w-4 shrink-0" /><a href={`mailto:${clinic.email}`} className="hover:underline">{clinic.email}</a></p> : null}
+        </div>
+
+        {directionsUrl ? (
+          <a href={directionsUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-accent transition hover:border-primary dark:border-neutral-700">
+            <MapPin className="h-4 w-4" />{language === "si" ? "දිශාවන්" : language === "ta" ? "திசைகள்" : "Directions"}
+          </a>
+        ) : null}
       </section>
 
       <section className={cardClassP4}>
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-[15px] font-semibold text-accent">{language === "si" ? "ලබා ගත හැකි ශල්‍ය වෛද්‍යවරු" : language === "ta" ? "கிடைக்கும் அறுவை மருத்தவர்கள்" : "Available Surgeons"}</h3>
-          <button type="button" className="text-sm font-semibold text-primary">{language === "si" ? "සියල්ල බලන්න" : language === "ta" ? "அனைத்தும் காண்க" : "View All"}</button>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {clinic.surgeons.map((surgeon) => (
-            <button key={surgeon.id} onClick={() => { setSelectedSurgeonId(surgeon.id); setSelectedSlot(""); }} className={`rounded-xl border p-2 text-center transition ${selectedSurgeonId === surgeon.id ? "border-primary bg-info-light dark:border-primary dark:bg-primary/20" : "border-border bg-surface dark:border-neutral-700 dark:bg-neutral-950"}`}>
-              <img src={surgeon.avatar} alt={surgeon.name} className="mx-auto h-12 w-12 rounded-full object-cover" />
-              <p className="mt-1 text-xs font-semibold text-accent">{surgeon.name.split(" ").slice(0, 2).join(" ")}</p>
-            </button>
-          ))}
-        </div>
+        <h3 className="text-[15px] font-semibold text-accent">{language === "si" ? "ලබා ගත හැකි වෛද්‍යවරු" : language === "ta" ? "கிடைக்கும் மருத்துவர்கள்" : "Available Vets"}</h3>
+        {clinic.surgeons.length === 0 ? (
+          <p className="mt-3 text-sm text-accent-subtle">{language === "si" ? "මෙම ක්ලිනිකයට තවම වෛද්‍යවරුන් නොමැත." : language === "ta" ? "இந்த கிளினிக்கில் இன்னும் மருத்துவர்கள் இல்லை." : "No vets listed for this clinic yet."}</p>
+        ) : (
+          <>
+            <div className="mt-3 space-y-2">
+              {clinic.surgeons.map((surgeon) => {
+                const active = selectedSurgeonId === surgeon.id;
+                const initials = surgeon.name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+                return (
+                  <button key={surgeon.id} onClick={() => { setSelectedSurgeonId(surgeon.id); setSelectedSlot(""); }} className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition ${active ? "border-primary bg-info-light dark:border-primary dark:bg-primary/20" : "border-border bg-surface dark:border-neutral-700 dark:bg-neutral-950"}`}>
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tertiary text-sm font-semibold text-accent-subtle dark:bg-neutral-800">{initials}</span>
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-semibold text-accent">{surgeon.name}</span>
+                      <span className="block text-[12px] text-accent-subtle">{surgeon.specialization}</span>
+                      {surgeon.qualifications.length ? <span className="block text-[11px] text-accent-faint">{surgeon.qualifications.join(", ")}</span> : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
-        <div className="mt-4 space-y-2">
-          <Label className="text-sm">{language === "si" ? "සුරතලය තෝරන්න" : language === "ta" ? "செல்லப்பிராணியைத் தேர்ந்தெடுக்கவும்" : "Select Pet"}</Label>
-          <select className={selectClass} value={selectedPetId} onChange={(e) => setSelectedPetId(e.target.value)}>
-            {pets.map((pet) => <option key={pet.id} value={pet.id}>{pet.name}</option>)}
-          </select>
-        </div>
+            <div className="mt-4 space-y-2">
+              <Label className="text-sm">{language === "si" ? "සුරතලය තෝරන්න" : language === "ta" ? "செல்லப்பிராணியைத் தேர்ந்தெடுக்கவும்" : "Select Pet"}</Label>
+              <select className={selectClass} value={selectedPetId} onChange={(e) => setSelectedPetId(e.target.value)}>
+                {pets.map((pet) => <option key={pet.id} value={pet.id}>{pet.name}</option>)}
+              </select>
+            </div>
 
-        <div className="mt-4">
-          <p className="mb-2 text-base font-semibold text-accent">{language === "si" ? "ලබා ගත හැකි වේලාවන්" : language === "ta" ? "கிடைக்கும் நேர இடங்கள்" : "Available Time Slots"}</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {selectedSurgeon?.slots.map((slot) => (
-              <button key={slot} onClick={() => setSelectedSlot(slot)} className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${selectedSlot === slot ? "border-primary bg-primary text-white" : "border-border bg-surface text-accent dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"}`}>
-                {slot}
-              </button>
-            ))}
-          </div>
-        </div>
+            <div className="mt-4">
+              <p className="mb-2 text-base font-semibold text-accent">{language === "si" ? "ලබා ගත හැකි වේලාවන්" : language === "ta" ? "கிடைக்கும் நேர இடங்கள்" : "Available Time Slots"}</p>
+              {selectedSurgeon && selectedSurgeon.slots.length > 0 ? (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {selectedSurgeon.slots.map((slot) => (
+                    <button key={slot} onClick={() => setSelectedSlot(slot)} className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${selectedSlot === slot ? "border-primary bg-primary text-white" : "border-border bg-surface text-accent dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"}`}>
+                      {slot}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-accent-subtle">{language === "si" ? "දැනට ලබා ගත හැකි වේලාවන් නොමැත." : language === "ta" ? "தற்போது கிடைக்கும் நேரம் இல்லை." : "No open slots right now."}</p>
+              )}
+            </div>
 
-        <Button size="xl" className="mt-4 w-full" onClick={confirmBooking} disabled={!selectedSlot}>{language === "si" ? "හමුවීම් වෙන් කරන්න" : language === "ta" ? "நேரம் பதிவு செய்யவும்" : "Book Appointment"}</Button>
-        {bookingError ? <p className="mt-2 text-sm text-red-600 dark:text-red-400">{bookingError}</p> : null}
-      </section>
-
-      <section className={cardClassP4}>
-        <h3 className="text-[15px] font-semibold text-accent">{language === "si" ? "මෙම ක්ලිනික් එක රේට් කරන්න" : language === "ta" ? "இந்த கிளினிக்கிற்கு மதிப்பிடவும்" : "Rate This Clinic"}</h3>
-        <div className="mt-3 flex gap-2">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} onClick={() => setClinicRating(n)}><Star className={`h-7 w-7 ${n <= clinicRating ? "fill-primary text-primary" : "text-border-strong"}`} /></button>
-          ))}
-        </div>
-        <textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)} className={`mt-3 h-28 ${textAreaClass}`} placeholder={language === "si" ? "කාර්ය මණ්ඩලය, රැඳී සිටීමේ කාලය සහ සේවා ගුණාත්මකභාවය පිළිබඳව ඔබගේ අදහස බෙදාගන්න" : language === "ta" ? "பணியாளர்கள், காத்திருக்கும் நேரம் மற்றும் சேவை தரம் பற்றிய உங்கள் கருத்தை பகிரவும்" : "Share your review about staff, wait time and service quality"} />
-        <Button variant="secondary" className="mt-3">{language === "si" ? "සමාලෝචනය යවන්න" : language === "ta" ? "மதிப்புரையை சமர்ப்பிக்கவும்" : "Submit Review"}</Button>
+            <Button size="xl" className="mt-4 w-full" onClick={confirmBooking} disabled={!selectedSlot}>{language === "si" ? "හමුවීම් වෙන් කරන්න" : language === "ta" ? "நேரம் பதிவு செய்யவும்" : "Book Appointment"}</Button>
+            {bookingError ? <p className="mt-2 text-sm text-red-600 dark:text-red-400">{bookingError}</p> : null}
+          </>
+        )}
       </section>
     </>
   );
@@ -655,54 +687,6 @@ export function BookingConfirmationPage() {
 
       <div className="space-y-3 pb-4">
         <Button size="xl" className="w-full" onClick={() => navigate("/pets")}>{language === "si" ? "මුල් පිටුවට යන්න" : language === "ta" ? "முகப்புக்கு திரும்பவும்" : "Return to Home"}</Button>
-      </div>
-    </PageShell>
-  );
-}
-
-export function ServiceFeedbackPage() {
-  const language = useLanguageStore((state) => state.language);
-  const clinics = useClinicDirectory();
-  const [clinicRating, setClinicRating] = useState(0);
-  const [feedback, setFeedback] = useState("");
-  const [clinicId, setClinicId] = useState(clinics[0].id);
-  const [suggestions, setSuggestions] = useState(false);
-
-  function submitFeedback() {
-    const payload = { clinicRating, clinicId, feedback, suggestions, at: new Date().toISOString() };
-    localStorage.setItem("companion_ai_service_feedback", JSON.stringify(payload));
-  }
-
-  return (
-    <PageShell title={language === "si" ? "ක්ලිනික් ප්‍රතිපෝෂණය" : language === "ta" ? "கிளினிக் கருத்து" : "Clinic Feedback"}>
-      <section className={`${cardClassP6} text-center`}>
-        <h2 className="text-3xl font-semibold text-accent">{language === "si" ? "අපට ඔබගේ අදහස වැදගත්" : language === "ta" ? "உங்கள் கருத்து எங்களுக்கு முக்கியம்" : "We value your feedback"}</h2>
-        <p className="mt-2 text-base text-accent-subtle">{language === "si" ? "ඔබගේ ක්ලිනික් අත්දැකීම රේට් කර අපට දියුණු වීමට උදවු කරන්න." : language === "ta" ? "உங்கள் கிளினிக் அனுபவத்தை மதிப்பிட்டு எங்களை மேம்பட உதவுங்கள்." : "Rate your clinic experience and help us improve."}</p>
-      </section>
-
-      <section className={cardClassP5}>
-        <Label className="text-sm">{language === "si" ? "ක්ලිනික් සමාලෝචනය" : language === "ta" ? "கிளினிக் மதிப்புரை" : "Clinic Review"}</Label>
-        <select className={`mt-2 ${selectClass}`} value={clinicId} onChange={(e) => setClinicId(e.target.value)}>
-          {clinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}
-        </select>
-        <div className="mt-3 flex gap-2">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} onClick={() => setClinicRating(n)}><Star className={`h-7 w-7 ${n <= clinicRating ? "fill-primary text-primary" : "text-border-strong"}`} /></button>
-          ))}
-        </div>
-      </section>
-
-      <section className={cardClassP5}>
-        <Label className="text-sm">{language === "si" ? "ඔබගේ අත්දැකීම අපට කියන්න" : language === "ta" ? "உங்கள் அனுபவத்தை பகிரவும்" : "Tell us about your experience"}</Label>
-        <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} className={`mt-2 h-32 ${textAreaClass}`} placeholder={language === "si" ? "ඔබට කැමති වූ දේ? දියුණු විය යුතු දේ?" : language === "ta" ? "உங்களுக்கு என்ன பிடித்தது? எதை மேம்படுத்த வேண்டும்?" : "What did you like? What should improve?"} />
-        <label className="mt-4 flex items-center justify-between rounded-2xl border border-border px-4 py-3 dark:border-neutral-700 dark:bg-neutral-950">
-          <span className="text-sm text-accent">{language === "si" ? "මම වැඩිදියුණු කිරීම් යෝජනා කිරීමට කැමතියි" : language === "ta" ? "மேம்பாடுகளை பரிந்துரைக்க விரும்புகிறேன்" : "I'd like to suggest improvements"}</span>
-          <input type="checkbox" checked={suggestions} onChange={(e) => setSuggestions(e.target.checked)} className="h-5 w-5" />
-        </label>
-      </section>
-
-      <div className="space-y-3 pb-4">
-        <Button size="xl" className="w-full" onClick={submitFeedback}>{language === "si" ? "ප්‍රතිපෝෂණය යවන්න" : language === "ta" ? "கருத்தை சமர்ப்பிக்கவும்" : "Submit Feedback"}</Button>
       </div>
     </PageShell>
   );

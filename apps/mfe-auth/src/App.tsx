@@ -13,7 +13,6 @@ import { VeterinarianDashboardPage } from "./pages/VeterinarianDashboardPage";
 import { AdminDashboardPage } from "./pages/AdminDashboardPage";
 import {
   BookingConfirmationPage,
-  ServiceFeedbackPage,
   SymptomReportPage,
   PredictionResultPage,
 } from "./pages/PetOwnerFlowPages";
@@ -49,7 +48,6 @@ export default function App() {
         }
       />
       <Route path="/pets/booking-confirmed" element={<ProtectedRoute allowedRoles={["pet-owner"]}><BookingConfirmationPage /></ProtectedRoute>} />
-      <Route path="/pets/feedback" element={<ProtectedRoute allowedRoles={["pet-owner"]}><ServiceFeedbackPage /></ProtectedRoute>} />
       <Route path="/pets/symptoms/:petId" element={<ProtectedRoute allowedRoles={["pet-owner"]}><SymptomReportPage /></ProtectedRoute>} />
       <Route path="/pets/prediction/:petId" element={<ProtectedRoute allowedRoles={["pet-owner"]}><PredictionResultPage /></ProtectedRoute>} />
       <Route
