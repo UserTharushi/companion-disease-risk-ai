@@ -2,7 +2,12 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.schemas.prediction import PredictionResponse, SymptomPayload
+from app.schemas.prediction import (
+    DiagnosisRequest,
+    FeedbackRequest,
+    PredictionResponse,
+    SymptomPayload,
+)
 from app.services import model_store, names_i18n, ontology, prediction_repo, predictor
 
 router = APIRouter()
@@ -35,12 +40,37 @@ def prediction_history(
     return {"success": True, "data": items}
 
 
+# NOTE: registered before /predictions/{prediction_id} so the literal
+# "feedback/summary" path is not captured by the {prediction_id} param.
+@router.get("/predictions/feedback/summary")
+def prediction_feedback_summary():
+    return {"success": True, "data": prediction_repo.feedback_summary()}
+
+
 @router.get("/predictions/{prediction_id}")
 def prediction_detail(prediction_id: str):
     doc = prediction_repo.get(prediction_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Prediction not found")
     return {"success": True, "data": doc}
+
+
+@router.post("/predictions/{prediction_id}/feedback")
+def prediction_feedback(prediction_id: str, body: FeedbackRequest, ownerId: Optional[str] = Query(default=None)):
+    ok = prediction_repo.set_feedback(
+        prediction_id, body.rating, body.matched_diagnosis, body.comment, ownerId
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+    return {"success": True}
+
+
+@router.post("/predictions/{prediction_id}/diagnosis")
+def prediction_diagnosis(prediction_id: str, body: DiagnosisRequest, vetId: Optional[str] = Query(default=None)):
+    ok = prediction_repo.set_diagnosis(prediction_id, body.diagnosis, body.notes, vetId)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+    return {"success": True}
 
 
 @router.get("/model/info")

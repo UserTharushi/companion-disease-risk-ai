@@ -143,3 +143,72 @@ export async function getPrediction(id: string): Promise<StoredPrediction> {
   const body = (await response.json()) as { success: boolean; data: StoredPrediction };
   return body.data;
 }
+
+// --- Feedback / diagnosis loop -------------------------------------------
+// Owner tells us whether a prediction was useful and (once seen by a vet)
+// whether it matched the real diagnosis; the vet records the confirmed
+// diagnosis. Together these close the AI-vs-actual continuous-learning loop.
+
+export type PredictionFeedback = {
+  rating: "helpful" | "not_helpful";
+  matchedDiagnosis?: "yes" | "no" | "unsure";
+  comment?: string;
+};
+
+export async function submitPredictionFeedback(predictionId: string, feedback: PredictionFeedback): Promise<void> {
+  const params = new URLSearchParams({ ownerId: getOwnerId() });
+  const response = await fetch(
+    `${API_BASE_URL}/api/predictions/${encodeURIComponent(predictionId)}/feedback?${params}`,
+    {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        rating: feedback.rating,
+        matched_diagnosis: feedback.matchedDiagnosis ?? null,
+        comment: feedback.comment ?? "",
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Feedback request failed (${response.status})`);
+  }
+}
+
+export async function recordVetDiagnosis(
+  predictionId: string,
+  diagnosis: { diagnosis: string; notes?: string },
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/predictions/${encodeURIComponent(predictionId)}/diagnosis`,
+    {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ diagnosis: diagnosis.diagnosis, notes: diagnosis.notes ?? "" }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Diagnosis request failed (${response.status})`);
+  }
+}
+
+export type FeedbackSummary = {
+  total_predictions: number;
+  feedback_count: number;
+  helpful: number;
+  not_helpful: number;
+  helpful_rate: number | null;
+  diagnosed_count: number;
+  ai_vs_vet_agreement: number;
+  ai_vs_vet_agreement_rate: number | null;
+};
+
+export async function getFeedbackSummary(): Promise<FeedbackSummary> {
+  const response = await fetch(`${API_BASE_URL}/api/predictions/feedback/summary`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Feedback summary request failed (${response.status})`);
+  }
+  const body = (await response.json()) as { success: boolean; data: FeedbackSummary };
+  return body.data;
+}

@@ -9,7 +9,7 @@ import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { useLanguageStore } from "../lib/language";
 import { getOwnerId, listOwnerPets, type BackendPet } from "../lib/pet-api";
 import { createAppointment, listClinics } from "../lib/clinic-api";
-import { submitPrediction, getPrediction, type PredictionResult } from "../lib/prediction-api";
+import { submitPrediction, getPrediction, submitPredictionFeedback, type PredictionResult } from "../lib/prediction-api";
 import { analyzeCase, getRecommendations, type AgentResponse } from "../lib/agent-api";
 import { createVaccination, listVaccinations, type VaccinationRecord } from "../lib/vaccination-api";
 import { toast } from "../lib/use-toast";
@@ -1052,6 +1052,32 @@ export function PredictionResultPage() {
   const [agent, setAgent] = useState<AgentResponse | null>(null);
   const [agentLoading, setAgentLoading] = useState(false);
 
+  // Owner feedback on the prediction (closes the AI-vs-actual learning loop)
+  const [fbRating, setFbRating] = useState<"helpful" | "not_helpful" | null>(null);
+  const [fbMatched, setFbMatched] = useState<"yes" | "no" | "unsure">("unsure");
+  const [fbComment, setFbComment] = useState("");
+  const [fbSubmitting, setFbSubmitting] = useState(false);
+  const [fbDone, setFbDone] = useState(false);
+
+  async function handleSubmitFeedback() {
+    const predictionId = result?.id;
+    if (!predictionId || !fbRating) return;
+    setFbSubmitting(true);
+    try {
+      await submitPredictionFeedback(predictionId, {
+        rating: fbRating,
+        matchedDiagnosis: fbMatched,
+        comment: fbComment.trim(),
+      });
+      setFbDone(true);
+      toast({ title: language === "si" ? "ඔබේ ප්‍රතිපෝෂණයට ස්තූතියි — එය ආකෘතිය වැඩිදියුණු කිරීමට උපකාරී වේ." : language === "ta" ? "உங்கள் கருத்துக்கு நன்றி — இது மாதிரியை மேம்படுத்த உதவுகிறது." : "Thanks for your feedback — it helps improve the model." });
+    } catch {
+      toast({ title: language === "si" ? "ප්‍රතිපෝෂණය සුරැකිය නොහැක. නැවත උත්සාහ කරන්න." : language === "ta" ? "கருத்தைச் சேமிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்." : "Could not save feedback. Please try again.", variant: "error" });
+    } finally {
+      setFbSubmitting(false);
+    }
+  }
+
   useEffect(() => {
     if (!historyId) return;
     let active = true;
@@ -1459,6 +1485,76 @@ export function PredictionResultPage() {
       ) : null}
 
       <Disclaimer />
+
+      {result?.id ? (
+        <section className={cardClassP5}>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-accent">{language === "si" ? "මෙම තක්සේරුව උපකාරී වූවාද?" : language === "ta" ? "இந்த மதிப்பீடு உதவியாக இருந்ததா?" : "Was this assessment helpful?"}</h3>
+          {fbDone ? (
+            <div className="mt-3 flex items-center gap-2 rounded-xl border border-success-fg/30 bg-success-light px-3 py-2 text-sm text-success-fg">
+              <Check className="h-4 w-4" />
+              <span>{language === "si" ? "ඔබේ ප්‍රතිපෝෂණයට ස්තූතියි — එය ආකෘතිය වැඩිදියුණු කිරීමට උපකාරී වේ." : language === "ta" ? "உங்கள் கருத்துக்கு நன்றி — இது மாதிரியை மேம்படுத்த உதவுகிறது." : "Thanks for your feedback — it helps improve the model."}</span>
+            </div>
+          ) : (
+            <div className="mt-3 space-y-4">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFbRating("helpful")}
+                  className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition ${fbRating === "helpful" ? "border-success-fg bg-success-light text-success-fg" : "border-border text-accent hover:border-primary dark:border-neutral-700"}`}
+                >
+                  👍 {language === "si" ? "උපකාරී විය" : language === "ta" ? "உதவியாக இருந்தது" : "Helpful"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFbRating("not_helpful")}
+                  className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition ${fbRating === "not_helpful" ? "border-danger-fg bg-danger-light text-danger-fg" : "border-border text-accent hover:border-primary dark:border-neutral-700"}`}
+                >
+                  👎 {language === "si" ? "උපකාරී නොවීය" : language === "ta" ? "உதவியாக இல்லை" : "Not helpful"}
+                </button>
+              </div>
+
+              {fbRating ? (
+                <>
+                  <div>
+                    <Label>{language === "si" ? "මෙය ඔබේ පශු වෛද්‍යවරයාගේ රෝග විනිශ්චයට ගැලපුණාද?" : language === "ta" ? "இது உங்கள் கால்நடை மருத்துவரின் நோயறிதலுடன் பொருந்தியதா?" : "Did this match your vet's diagnosis?"}</Label>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {([
+                        ["unsure", language === "si" ? "තවම පශු වෛද්‍යවරයකු බලා නැත" : language === "ta" ? "இன்னும் மருத்துவர் பார்க்கவில்லை" : "Not seen by a vet yet"],
+                        ["yes", language === "si" ? "ඔව්" : language === "ta" ? "ஆம்" : "Yes"],
+                        ["no", language === "si" ? "නැහැ" : language === "ta" ? "இல்லை" : "No"],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setFbMatched(value)}
+                          className={`rounded-full border px-3 py-1 text-sm transition ${fbMatched === value ? "border-primary bg-info-light text-primary dark:bg-primary/10" : "border-border text-accent-subtle hover:border-primary dark:border-neutral-700"}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="fb-comment">{language === "si" ? "එකතු කිරීමට යමක් තිබේද? (විකල්ප)" : language === "ta" ? "ஏதேனும் சேர்க்க வேண்டுமா? (விருப்பத்தேர்வு)" : "Anything to add? (optional)"}</Label>
+                    <textarea
+                      id="fb-comment"
+                      value={fbComment}
+                      onChange={(e) => setFbComment(e.target.value)}
+                      rows={2}
+                      className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-accent outline-none focus:border-primary dark:border-neutral-700 dark:bg-neutral-950"
+                    />
+                  </div>
+
+                  <Button className="w-full" disabled={fbSubmitting} onClick={handleSubmitFeedback}>
+                    {fbSubmitting ? "…" : language === "si" ? "ප්‍රතිපෝෂණය යවන්න" : language === "ta" ? "கருத்தை சமர்ப்பிக்கவும்" : "Submit feedback"}
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          )}
+        </section>
+      ) : null}
 
       {data?.imageDataUrl ? (
         <section className={cardClassP5}>

@@ -7,6 +7,17 @@ DISCLAIMER_TEXT = (
 )
 
 
+class FeedbackRequest(BaseModel):
+    rating: str  # "helpful" | "not_helpful"
+    matched_diagnosis: Optional[str] = None  # "yes" | "no" | "unsure"
+    comment: str = ""
+
+
+class DiagnosisRequest(BaseModel):
+    diagnosis: str  # the vet's confirmed actual diagnosis
+    notes: str = ""
+
+
 class SymptomPayload(BaseModel):
     pet_id: str
     owner_id: Optional[str] = None

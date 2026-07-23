@@ -87,3 +87,68 @@ def get(prediction_id: str) -> Optional[dict]:
     except Exception as ex:
         logger.warning("Could not read prediction %s: %s", prediction_id, ex)
         return None
+
+
+def set_feedback(prediction_id: str, rating: str, matched: Optional[str], comment: str, owner_id: Optional[str]) -> bool:
+    """Owner feedback on a prediction (helpful / not_helpful, matched-vet-diagnosis, comment)."""
+    try:
+        fields = {
+            "feedback_rating": rating,
+            "feedback_matched_diagnosis": matched,
+            "feedback_comment": comment,
+            "feedback_owner_id": owner_id,
+            "feedback_at": datetime.now(timezone.utc),
+        }
+        res = _collection().update_one({"_id": ObjectId(prediction_id)}, {"$set": fields})
+        return res.matched_count > 0
+    except Exception as ex:
+        logger.warning("Could not save feedback for %s: %s", prediction_id, ex)
+        return False
+
+
+def set_diagnosis(prediction_id: str, diagnosis: str, notes: str, vet_id: Optional[str]) -> bool:
+    """Vet's confirmed actual diagnosis for the case — enables AI-vs-actual comparison."""
+    try:
+        fields = {
+            "vet_diagnosis": diagnosis,
+            "vet_notes": notes,
+            "vet_id": vet_id,
+            "diagnosed_at": datetime.now(timezone.utc),
+        }
+        res = _collection().update_one({"_id": ObjectId(prediction_id)}, {"$set": fields})
+        return res.matched_count > 0
+    except Exception as ex:
+        logger.warning("Could not save diagnosis for %s: %s", prediction_id, ex)
+        return False
+
+
+def feedback_summary() -> dict:
+    """Research/eval aggregate: owner-feedback usefulness + AI-vs-vet-diagnosis agreement."""
+    try:
+        col = _collection()
+        total = col.count_documents({})
+        helpful = col.count_documents({"feedback_rating": "helpful"})
+        not_helpful = col.count_documents({"feedback_rating": "not_helpful"})
+        with_feedback = helpful + not_helpful
+        # AI-vs-actual agreement (top-1 predicted disease == vet diagnosis)
+        diagnosed = list(col.find({"vet_diagnosis": {"$exists": True, "$ne": ""}},
+                                  {"predicted_diseases": 1, "vet_diagnosis": 1}))
+        agree = 0
+        for d in diagnosed:
+            top = (d.get("predicted_diseases") or [{}])[0].get("disease", "")
+            if top and top.strip().lower() == str(d.get("vet_diagnosis", "")).strip().lower():
+                agree += 1
+        n_diag = len(diagnosed)
+        return {
+            "total_predictions": total,
+            "feedback_count": with_feedback,
+            "helpful": helpful,
+            "not_helpful": not_helpful,
+            "helpful_rate": round(helpful / with_feedback, 4) if with_feedback else None,
+            "diagnosed_count": n_diag,
+            "ai_vs_vet_agreement": agree,
+            "ai_vs_vet_agreement_rate": round(agree / n_diag, 4) if n_diag else None,
+        }
+    except Exception as ex:
+        logger.warning("Could not compute feedback summary: %s", ex)
+        return {"total_predictions": 0, "feedback_count": 0}

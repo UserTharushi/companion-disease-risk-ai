@@ -23,6 +23,7 @@ import {
   listClinics,
   updateClinic,
 } from "../lib/clinic-api";
+import { getFeedbackSummary, type FeedbackSummary } from "../lib/prediction-api";
 import { toast } from "../lib/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
@@ -166,6 +167,7 @@ export function AdminDashboardPage() {
     indicates_count: number;
     prevents_count: number;
   } | null>(null);
+  const [feedbackSummary, setFeedbackSummary] = useState<FeedbackSummary | null>(null);
 
   const refreshClinics = useCallback(() => {
     setClinicsLoading(true);
@@ -191,6 +193,9 @@ export function AdminDashboardPage() {
     fetch(`${base}/api/ontology/summary?language=${language}`)
       .then((r) => r.json())
       .then((body) => setOntologySummary(body?.data ?? null))
+      .catch(() => undefined);
+    getFeedbackSummary()
+      .then(setFeedbackSummary)
       .catch(() => undefined);
   }, [activeSection, language]);
 
@@ -1359,6 +1364,36 @@ export function AdminDashboardPage() {
                       </div>
                     </details>
                   ) : null}
+                </div>
+
+                <div className={card}>
+                  <h3 className="text-[15px] font-semibold text-accent dark:text-white">{tr("feedbackAnalytics")}</h3>
+                  <p className="mt-0.5 text-[12px] text-accent-subtle">{tr("feedbackAnalyticsDetail")}</p>
+                  {feedbackSummary && feedbackSummary.feedback_count + feedbackSummary.diagnosed_count > 0 ? (
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      <div className="rounded-lg border border-border/60 p-3 dark:border-neutral-800">
+                        <p className="text-[12px] font-medium text-accent-subtle">{tr("ownerHelpfulRate")}</p>
+                        <p className="mt-1 text-2xl font-semibold text-accent dark:text-white">
+                          {feedbackSummary.helpful_rate != null ? `${Math.round(feedbackSummary.helpful_rate * 100)}%` : "—"}
+                        </p>
+                        <p className="mt-1 text-[11px] text-accent-faint">{tr("responsesCount").replace("{n}", String(feedbackSummary.feedback_count))}</p>
+                      </div>
+                      <div className="rounded-lg border border-border/60 p-3 dark:border-neutral-800">
+                        <p className="text-[12px] font-medium text-accent-subtle">{tr("diagnosesConfirmed")}</p>
+                        <p className="mt-1 text-2xl font-semibold text-accent dark:text-white">{feedbackSummary.diagnosed_count}</p>
+                        <p className="mt-1 text-[11px] text-accent-faint">/ {feedbackSummary.total_predictions}</p>
+                      </div>
+                      <div className="rounded-lg border border-border/60 p-3 dark:border-neutral-800">
+                        <p className="text-[12px] font-medium text-accent-subtle">{tr("aiVetAgreement")}</p>
+                        <p className="mt-1 text-2xl font-semibold text-accent dark:text-white">
+                          {feedbackSummary.ai_vs_vet_agreement_rate != null ? `${Math.round(feedbackSummary.ai_vs_vet_agreement_rate * 100)}%` : "—"}
+                        </p>
+                        <p className="mt-1 text-[11px] text-accent-faint">{feedbackSummary.ai_vs_vet_agreement}/{feedbackSummary.diagnosed_count}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-[13px] text-accent-subtle">{tr("noFeedbackYet")}</p>
+                  )}
                 </div>
               </div>
             )}

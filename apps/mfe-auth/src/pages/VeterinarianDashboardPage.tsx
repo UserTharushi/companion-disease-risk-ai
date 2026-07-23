@@ -16,7 +16,7 @@ import { toast } from "../lib/use-toast";
 import { listAllAppointments, listClinics, updateAppointment, listInquiries, replyToInquiry } from "../lib/clinic-api";
 import { listAllPets, type BackendPet } from "../lib/pet-api";
 import { listVaccinations } from "../lib/vaccination-api";
-import { getPredictionHistory } from "../lib/prediction-api";
+import { getPredictionHistory, recordVetDiagnosis } from "../lib/prediction-api";
 import { getMyProfile, updateMyProfile } from "../lib/auth-api";
 import type { Appointment as BackendAppointment, SurgeonInquiry, VetClinic } from "@companion-ai/shared-types";
 import {
@@ -64,7 +64,14 @@ interface PatientRow {
   ownerId: string;
   vaccineStatus: "up-to-date" | "due-soon" | "overdue" | "none";
   nextVaccine?: { name: string; dueAt: string } | null;
-  lastRisk?: { level: string; disease: string; at: string } | null;
+  lastRisk?: {
+    level: string;
+    disease: string;
+    at: string;
+    predictionId?: string;
+    predictedDisease?: string; // raw (unlocalized) top-1 disease, for the AI-vs-actual record
+    vetDiagnosis?: string; // confirmed diagnosis once recorded
+  } | null;
 }
 
 interface FollowUpRow {
@@ -113,6 +120,13 @@ export function VeterinarianDashboardPage() {
   const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
   const [patients, setPatients] = useState<PatientRow[]>([]);
   const [inquiries, setInquiries] = useState<SurgeonInquiry[]>([]);
+
+  // Record-diagnosis state (vet confirms the actual diagnosis for a patient's
+  // latest AI assessment — feeds the AI-vs-actual continuous-learning loop)
+  const [diagnosingId, setDiagnosingId] = useState<string | null>(null);
+  const [diagnosisText, setDiagnosisText] = useState("");
+  const [diagnosisNotes, setDiagnosisNotes] = useState("");
+  const [diagnosisSaving, setDiagnosisSaving] = useState(false);
 
   const [vetProfile, setVetProfile] = useState<VetProfile>(() => {
     const stored = loadJson<Partial<VetProfile> | null>(VET_PROFILE_KEY, null);
@@ -224,6 +238,9 @@ export function VeterinarianDashboardPage() {
                 level: latest.risk_level,
                 disease: latest.predicted_diseases?.[0]?.disease_localized || latest.predicted_diseases?.[0]?.disease || "—",
                 at: latest.created_at,
+                predictionId: latest.id,
+                predictedDisease: latest.predicted_diseases?.[0]?.disease || "",
+                vetDiagnosis: (latest as { vet_diagnosis?: string }).vet_diagnosis || "",
               }
             : null;
           return {
@@ -418,6 +435,34 @@ export function VeterinarianDashboardPage() {
   function formatSlot(datetime: string | null) {
     if (!datetime) return "—";
     return new Date(datetime).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  }
+
+  function openDiagnosis(patient: PatientRow) {
+    setDiagnosingId(patient.id);
+    setDiagnosisText(patient.lastRisk?.vetDiagnosis || "");
+    setDiagnosisNotes("");
+  }
+
+  async function saveDiagnosis(patient: PatientRow) {
+    const predictionId = patient.lastRisk?.predictionId;
+    if (!predictionId || !diagnosisText.trim()) return;
+    setDiagnosisSaving(true);
+    try {
+      await recordVetDiagnosis(predictionId, { diagnosis: diagnosisText.trim(), notes: diagnosisNotes.trim() });
+      setPatients((prev) =>
+        prev.map((p) =>
+          p.id === patient.id && p.lastRisk
+            ? { ...p, lastRisk: { ...p.lastRisk, vetDiagnosis: diagnosisText.trim() } }
+            : p,
+        ),
+      );
+      setDiagnosingId(null);
+      toast({ title: tr("diagnosisSaved"), variant: "success" });
+    } catch {
+      toast({ title: tr("diagnosisError"), variant: "error" });
+    } finally {
+      setDiagnosisSaving(false);
+    }
   }
 
   function StatTile({ label, value, icon: Icon, tone }: { label: string; value: string | number; icon: typeof User; tone?: "danger" | "success" }) {
@@ -785,7 +830,47 @@ export function VeterinarianDashboardPage() {
                               <span className="text-accent-faint">—</span>
                             )}
                           </div>
+                          {patient.lastRisk?.vetDiagnosis ? (
+                            <div className="flex items-center justify-between">
+                              <span className="text-accent-subtle">{tr("actualDiagnosis")}</span>
+                              <span className="font-medium text-accent dark:text-white">{patient.lastRisk.vetDiagnosis}</span>
+                            </div>
+                          ) : null}
                         </div>
+
+                        {patient.lastRisk?.predictionId ? (
+                          diagnosingId === patient.id ? (
+                            <div className="mt-3 space-y-2 border-t border-border/60 pt-3 dark:border-neutral-800">
+                              <p className="text-[11px] text-accent-subtle">
+                                {tr("aiPredicted")}: <span className="font-medium text-accent dark:text-white">{patient.lastRisk.disease}</span>
+                              </p>
+                              <div>
+                                <Label className="text-[11px]">{tr("actualDiagnosis")}</Label>
+                                <Input className="mt-1 h-9 text-[13px]" value={diagnosisText} onChange={(e) => setDiagnosisText(e.target.value)} />
+                              </div>
+                              <div>
+                                <Label className="text-[11px]">{tr("diagnosisNotes")}</Label>
+                                <Input className="mt-1 h-9 text-[13px]" value={diagnosisNotes} onChange={(e) => setDiagnosisNotes(e.target.value)} />
+                              </div>
+                              <div className="flex gap-2">
+                                <Button size="sm" disabled={diagnosisSaving || !diagnosisText.trim()} onClick={() => saveDiagnosis(patient)}>
+                                  {diagnosisSaving ? "…" : tr("saveDiagnosis")}
+                                </Button>
+                                <Button size="sm" variant="secondary" onClick={() => setDiagnosingId(null)}>
+                                  <X className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => openDiagnosis(patient)}
+                              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border/60 py-1.5 text-[12px] font-medium text-accent-subtle transition hover:border-primary hover:text-primary dark:border-neutral-800"
+                            >
+                              <ClipboardCheck className="h-3.5 w-3.5" />
+                              {patient.lastRisk.vetDiagnosis ? tr("actualDiagnosis") : tr("recordDiagnosis")}
+                            </button>
+                          )
+                        ) : null}
                       </div>
                     );
                   })}
