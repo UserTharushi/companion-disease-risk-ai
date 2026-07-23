@@ -7,6 +7,7 @@ const API_BASE_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4
 export type PredictionVitals = {
   activityLevel: string;
   appetiteLevel: string;
+  waterIntake: string;
   urinationLevel: string;
   diarrheaLevel: string;
   vomitingLevel: string;
@@ -49,30 +50,6 @@ export type PredictionHistoryItem = {
   created_at: string;
 };
 
-// UI severity scale (none/normal/mild/moderate/severe) -> backend enums
-function mapAppetite(value: string): string {
-  if (value === "mild" || value === "moderate") return "reduced";
-  if (value === "severe") return "none";
-  return "normal";
-}
-
-function mapActivity(value: string): string {
-  if (value === "severe") return "lethargic";
-  return value; // normal | mild | moderate handled by the backend severity index
-}
-
-function mapUrination(value: string): string {
-  if (value === "mild" || value === "moderate" || value === "severe") return "increased";
-  return "normal";
-}
-
-function mapVomiting(value: string): string {
-  if (value === "mild") return "once";
-  if (value === "moderate") return "multiple";
-  if (value === "severe") return "persistent";
-  return "none";
-}
-
 function authHeaders(): Record<string, string> {
   const token = getAccessToken();
   return {
@@ -87,11 +64,12 @@ export function buildPredictionPayload(input: PredictionInput) {
     owner_id: getOwnerId(),
     species: input.species || "dog",
     age_years: input.ageYears ?? null,
-    appetite_level: mapAppetite(input.vitals.appetiteLevel),
-    water_intake: "normal",
-    activity_level: mapActivity(input.vitals.activityLevel),
-    urine_frequency: mapUrination(input.vitals.urinationLevel),
-    vomiting_frequency: mapVomiting(input.vitals.vomitingLevel),
+    // Values are already the backend enums (chosen from clear per-field options)
+    appetite_level: input.vitals.appetiteLevel || "normal",
+    water_intake: input.vitals.waterIntake || "normal",
+    activity_level: input.vitals.activityLevel || "normal",
+    urine_frequency: input.vitals.urinationLevel || "normal",
+    vomiting_frequency: input.vitals.vomitingLevel || "none",
     diarrhea_level: input.vitals.diarrheaLevel || "none",
     symptoms: input.symptoms,
     notes: input.notes,

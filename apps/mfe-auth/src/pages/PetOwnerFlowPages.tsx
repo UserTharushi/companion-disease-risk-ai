@@ -724,13 +724,12 @@ export function SymptomReportPage() {
     );
   }
 
-  type SeverityKey = "none" | "normal" | "mild" | "moderate" | "severe";
-
-  const [activityLevel, setActivityLevel] = useState<SeverityKey>("normal");
-  const [appetiteLevel, setAppetiteLevel] = useState<SeverityKey>("normal");
-  const [urinationLevel, setUrinationLevel] = useState<SeverityKey>("normal");
-  const [diarrheaLevel, setDiarrheaLevel] = useState<SeverityKey>("none");
-  const [vomitingLevel, setVomitingLevel] = useState<SeverityKey>("none");
+  const [activityLevel, setActivityLevel] = useState("normal");
+  const [appetiteLevel, setAppetiteLevel] = useState("normal");
+  const [waterIntake, setWaterIntake] = useState("normal");
+  const [urinationLevel, setUrinationLevel] = useState("normal");
+  const [diarrheaLevel, setDiarrheaLevel] = useState("none");
+  const [vomitingLevel, setVomitingLevel] = useState("none");
   const [symptoms, setSymptoms] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [aiGuided, setAiGuided] = useState(true);
@@ -755,32 +754,42 @@ export function SymptomReportPage() {
     { id: "fainting", label: language === "si" ? "සිහිසුන් වීම" : language === "ta" ? "மயக்கம்" : "Fainting / collapse" },
   ];
 
-  function getSeverityLabel(value: SeverityKey) {
-    if (language === "si") {
-      if (value === "none") return "නැත";
-      if (value === "normal") return "සාමාන්‍ය";
-      if (value === "mild") return "සුළු";
-      if (value === "moderate") return "මධ්‍යම";
-      return "දැඩි";
-    }
-
-    if (language === "ta") {
-      if (value === "none") return "இல்லை";
-      if (value === "normal") return "இயல்பு";
-      if (value === "mild") return "இலகு";
-      if (value === "moderate") return "மிதம்";
-      return "கடுமை";
-    }
-
-    if (value === "none") return "None";
-    if (value === "normal") return "Normal";
-    if (value === "mild") return "Mild";
-    if (value === "moderate") return "Moderate";
-    return "Severe";
-  }
-
-  const generalLevelOptions: SeverityKey[] = ["normal", "mild", "moderate", "severe"];
-  const bowelLevelOptions: SeverityKey[] = ["none", "mild", "moderate", "severe"];
+  // Clear, field-specific options (value = the enum the model understands).
+  type VitalOption = { v: string; en: string; si: string; ta: string };
+  const VITALS: Record<string, VitalOption[]> = {
+    activity: [
+      { v: "normal", en: "Normal", si: "සාමාන්‍ය", ta: "இயல்பு" },
+      { v: "mild", en: "Slightly less active", si: "මඳක් අඩු ක්‍රියාකාරී", ta: "சற்று குறைவான செயல்பாடு" },
+      { v: "lethargic", en: "Very low (lethargic)", si: "ඉතා අඩු (අලස)", ta: "மிகக் குறைவு (சோர்வு)" },
+    ],
+    appetite: [
+      { v: "normal", en: "Eating normally", si: "සාමාන්‍යයෙන් අනුභව කරයි", ta: "இயல்பாக சாப்பிடுகிறது" },
+      { v: "reduced", en: "Eating less", si: "අඩුවෙන් අනුභව කරයි", ta: "குறைவாக சாப்பிடுகிறது" },
+      { v: "none", en: "Not eating", si: "අනුභව නොකරයි", ta: "சாப்பிடவில்லை" },
+    ],
+    water: [
+      { v: "normal", en: "Drinking normally", si: "සාමාන්‍යයෙන් ජලය පානය", ta: "இயல்பாக தண்ணீர் குடிக்கிறது" },
+      { v: "increased", en: "Drinking more than usual", si: "සුපුරුදුට වඩා වැඩියෙන්", ta: "வழக்கத்தை விட அதிகம்" },
+      { v: "reduced", en: "Drinking less than usual", si: "සුපුරුදුට වඩා අඩුවෙන්", ta: "வழக்கத்தை விட குறைவு" },
+    ],
+    urine: [
+      { v: "normal", en: "Normal", si: "සාමාන්‍ය", ta: "இயல்பு" },
+      { v: "increased", en: "Urinating more than usual", si: "සුපුරුදුට වඩා වැඩියෙන් මුත්‍රා", ta: "வழக்கத்தை விட அதிக சிறுநீர்" },
+    ],
+    vomiting: [
+      { v: "none", en: "None", si: "නැත", ta: "இல்லை" },
+      { v: "once", en: "Once", si: "වරක්", ta: "ஒருமுறை" },
+      { v: "multiple", en: "Several times", si: "කිහිප වතාවක්", ta: "பலமுறை" },
+      { v: "persistent", en: "Persistent (can't keep food down)", si: "නිරන්තරයෙන්", ta: "தொடர்ச்சியாக" },
+    ],
+    diarrhea: [
+      { v: "none", en: "None", si: "නැත", ta: "இல்லை" },
+      { v: "mild", en: "Mild", si: "සුළු", ta: "இலகு" },
+      { v: "moderate", en: "Moderate", si: "මධ්‍යම", ta: "மிதம்" },
+      { v: "severe", en: "Severe", si: "දැඩි", ta: "கடுமை" },
+    ],
+  };
+  const optLabel = (o: VitalOption) => (language === "si" ? o.si : language === "ta" ? o.ta : o.en);
 
   function toggleSymptom(value: string) {
     setSymptoms((prev) => (prev.includes(value) ? prev.filter((s) => s !== value) : [...prev, value]));
@@ -828,7 +837,7 @@ export function SymptomReportPage() {
     setFormError("");
     setAnalyzing(true);
 
-    const vitals = { activityLevel, appetiteLevel, urinationLevel, diarrheaLevel, vomitingLevel };
+    const vitals = { activityLevel, appetiteLevel, waterIntake, urinationLevel, diarrheaLevel, vomitingLevel };
     const submission = {
       petId: pet.id,
       vitals,
@@ -907,32 +916,38 @@ export function SymptomReportPage() {
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
             <Label className="text-sm">{language === "si" ? "ක්‍රියාකාරී මට්ටම" : language === "ta" ? "செயல்பாட்டு அளவு" : "Activity level"}</Label>
-            <select className={`mt-1 ${selectClass}`} value={activityLevel} onChange={(e) => setActivityLevel(e.target.value as SeverityKey)}>
-              {generalLevelOptions.map((v) => <option key={v} value={v}>{getSeverityLabel(v)}</option>)}
+            <select className={`mt-1 ${selectClass}`} value={activityLevel} onChange={(e) => setActivityLevel(e.target.value)}>
+              {VITALS.activity.map((o) => <option key={o.v} value={o.v}>{optLabel(o)}</option>)}
             </select>
           </div>
           <div>
             <Label className="text-sm">{language === "si" ? "ආහාර රුචිය" : language === "ta" ? "பசி" : "Appetite"}</Label>
-            <select className={`mt-1 ${selectClass}`} value={appetiteLevel} onChange={(e) => setAppetiteLevel(e.target.value as SeverityKey)}>
-              {generalLevelOptions.map((v) => <option key={v} value={v}>{getSeverityLabel(v)}</option>)}
+            <select className={`mt-1 ${selectClass}`} value={appetiteLevel} onChange={(e) => setAppetiteLevel(e.target.value)}>
+              {VITALS.appetite.map((o) => <option key={o.v} value={o.v}>{optLabel(o)}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label className="text-sm">{language === "si" ? "ජලය පානය" : language === "ta" ? "தண்ணீர் அருந்துதல்" : "Water intake"}</Label>
+            <select className={`mt-1 ${selectClass}`} value={waterIntake} onChange={(e) => setWaterIntake(e.target.value)}>
+              {VITALS.water.map((o) => <option key={o.v} value={o.v}>{optLabel(o)}</option>)}
             </select>
           </div>
           <div>
             <Label className="text-sm">{language === "si" ? "මුත්‍රා කිරීම" : language === "ta" ? "சிறுநீர்" : "Urination"}</Label>
-            <select className={`mt-1 ${selectClass}`} value={urinationLevel} onChange={(e) => setUrinationLevel(e.target.value as SeverityKey)}>
-              {generalLevelOptions.map((v) => <option key={v} value={v}>{getSeverityLabel(v)}</option>)}
-            </select>
-          </div>
-          <div>
-            <Label className="text-sm">{language === "si" ? "පාචනය" : language === "ta" ? "வயிற்றுப்போக்கு" : "Diarrhea"}</Label>
-            <select className={`mt-1 ${selectClass}`} value={diarrheaLevel} onChange={(e) => setDiarrheaLevel(e.target.value as SeverityKey)}>
-              {bowelLevelOptions.map((v) => <option key={v} value={v}>{getSeverityLabel(v)}</option>)}
+            <select className={`mt-1 ${selectClass}`} value={urinationLevel} onChange={(e) => setUrinationLevel(e.target.value)}>
+              {VITALS.urine.map((o) => <option key={o.v} value={o.v}>{optLabel(o)}</option>)}
             </select>
           </div>
           <div>
             <Label className="text-sm">{language === "si" ? "වමනය" : language === "ta" ? "வாந்தி" : "Vomiting"}</Label>
-            <select className={`mt-1 ${selectClass}`} value={vomitingLevel} onChange={(e) => setVomitingLevel(e.target.value as SeverityKey)}>
-              {bowelLevelOptions.map((v) => <option key={v} value={v}>{getSeverityLabel(v)}</option>)}
+            <select className={`mt-1 ${selectClass}`} value={vomitingLevel} onChange={(e) => setVomitingLevel(e.target.value)}>
+              {VITALS.vomiting.map((o) => <option key={o.v} value={o.v}>{optLabel(o)}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label className="text-sm">{language === "si" ? "පාචනය" : language === "ta" ? "வயிற்றுப்போக்கு" : "Diarrhea"}</Label>
+            <select className={`mt-1 ${selectClass}`} value={diarrheaLevel} onChange={(e) => setDiarrheaLevel(e.target.value)}>
+              {VITALS.diarrhea.map((o) => <option key={o.v} value={o.v}>{optLabel(o)}</option>)}
             </select>
           </div>
           <div>
@@ -1006,6 +1021,7 @@ type ResultData = {
   vitals?: {
     activityLevel: string;
     appetiteLevel: string;
+    waterIntake: string;
     urinationLevel: string;
     diarrheaLevel: string;
     vomitingLevel: string;
@@ -1043,6 +1059,7 @@ export function PredictionResultPage() {
           vitals: {
             activityLevel: doc.payload?.activity_level ?? "normal",
             appetiteLevel: doc.payload?.appetite_level ?? "normal",
+            waterIntake: (doc.payload as { water_intake?: string })?.water_intake ?? "normal",
             urinationLevel: doc.payload?.urine_frequency ?? "normal",
             diarrheaLevel: doc.payload?.diarrhea_level ?? "none",
             vomitingLevel: doc.payload?.vomiting_frequency ?? "none",
@@ -1125,9 +1142,9 @@ export function PredictionResultPage() {
     const normalized = (value ?? "").trim().toLowerCase();
     if (["none", "නැත", "இல்லை"].includes(normalized)) return "none";
     if (["normal", "සාමාන්‍ය", "இயல்பு"].includes(normalized)) return "normal";
-    if (["mild", "සුළු", "இலகு"].includes(normalized)) return "mild";
-    if (["moderate", "මධ්‍යම", "மிதம்"].includes(normalized)) return "moderate";
-    if (["severe", "දැඩි", "கடுமை"].includes(normalized)) return "severe";
+    if (["mild", "once", "සුළු", "இலகு"].includes(normalized)) return "mild";
+    if (["moderate", "reduced", "increased", "multiple", "lethargic", "මධ්‍යම", "மிதம்"].includes(normalized)) return "moderate";
+    if (["severe", "persistent", "දැඩි", "கடுமை"].includes(normalized)) return "severe";
     return "normal";
   }
 
@@ -1160,6 +1177,7 @@ export function PredictionResultPage() {
   const vitalsScore =
     (data?.vitals ? severityScore[normalizeSeverity(data.vitals.activityLevel)] : 0) +
     (data?.vitals ? severityScore[normalizeSeverity(data.vitals.appetiteLevel)] : 0) +
+    (data?.vitals ? severityScore[normalizeSeverity(data.vitals.waterIntake)] : 0) +
     (data?.vitals ? severityScore[normalizeSeverity(data.vitals.urinationLevel)] : 0) +
     (data?.vitals ? severityScore[normalizeSeverity(data.vitals.diarrheaLevel)] : 0) +
     (data?.vitals ? severityScore[normalizeSeverity(data.vitals.vomitingLevel)] : 0);
