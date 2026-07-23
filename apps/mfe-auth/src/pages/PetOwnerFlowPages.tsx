@@ -746,7 +746,10 @@ export function SymptomReportPage() {
     { id: "stiff-gait", label: language === "si" ? "ඇවිදීමේ අපහසුතාව" : language === "ta" ? "நடையின் தடை" : "Stiff gait" },
     { id: "loss-of-appetite", label: language === "si" ? "ආහාර රුචිය අඩුවීම" : language === "ta" ? "பசியின்மை" : "Loss of appetite" },
     { id: "skin-irritation", label: language === "si" ? "සමේ කැසීම" : language === "ta" ? "தோல் எரிச்சல்" : "Skin irritation" },
+    { id: "ear-scratching", label: language === "si" ? "කන් කැසීම" : language === "ta" ? "காது சொறிதல்" : "Ear scratching" },
+    { id: "head-shaking", label: language === "si" ? "හිස සෙලවීම" : language === "ta" ? "தலை ஆட்டுதல்" : "Head shaking" },
     { id: "breathing-difficulty", label: language === "si" ? "හුස්ම ගැනීමේ අපහසුතාව" : language === "ta" ? "மூச்சுத்திணறல்" : "Breathing difficulty" },
+    { id: "pale-gums", label: language === "si" ? "සුදුමැලි විදුරුමස්" : language === "ta" ? "வெளிறிய ஈறுகள்" : "Pale gums" },
     { id: "weight-loss", label: language === "si" ? "බර අඩුවීම" : language === "ta" ? "எடை இழப்பு" : "Weight loss" },
     { id: "swollen-abdomen", label: language === "si" ? "ඉදිමුණු උදරය" : language === "ta" ? "வீங்கிய வயிறு" : "Swollen abdomen" },
     { id: "lump-swelling", label: language === "si" ? "ගැටිත්තක් / ඉදිමීමක්" : language === "ta" ? "கட்டி / வீக்கம்" : "Lump or swelling" },
@@ -775,6 +778,7 @@ export function SymptomReportPage() {
     urine: [
       { v: "normal", en: "Normal", si: "සාමාන්‍ය", ta: "இயல்பு" },
       { v: "increased", en: "Urinating more than usual", si: "සුපුරුදුට වඩා වැඩියෙන් මුත්‍රා", ta: "வழக்கத்தை விட அதிக சிறுநீர்" },
+      { v: "reduced", en: "Urinating less / straining", si: "අඩුවෙන් / අපහසුවෙන් මුත්‍රා", ta: "குறைவாக / சிரமத்துடன் சிறுநீர்" },
     ],
     vomiting: [
       { v: "none", en: "None", si: "නැත", ta: "இல்லை" },

@@ -23,7 +23,7 @@ CHECKLIST_TOKENS: dict[str, str] = {
     "lump-swelling": "lump or swelling",
     "yellow-gums": "jaundice",
     "fainting": "fainting",
-    # extra ids tolerated from older clients
+    "pale-gums": "pale gums",
     "ear-scratching": "ear scratching",
     "head-shaking": "head shaking",
 }
@@ -90,6 +90,8 @@ def _vital_phrases(p: SymptomPayload) -> list[str]:
         phrases.append("is less active than normal")
     if p.urine_frequency in {"increased", "mild", "moderate", "severe"}:
         phrases.append("is urinating more frequently")
+    elif p.urine_frequency == "reduced":
+        phrases.append("is urinating less and straining to pass urine")
     if p.vomiting_frequency in {"once", "mild"}:
         phrases.append("vomited once")
     elif p.vomiting_frequency in {"multiple", "moderate"}:
