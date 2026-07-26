@@ -35,7 +35,10 @@ export type PredictionResult = {
   risk_score: number;
   predicted_diseases: DiseaseRisk[];
   ontology_links: OntologyLink[];
-  top_features: Array<{ feature: string; weight: number }>;
+  // `field`/`value` name the form control the model term came from, so the UI
+  // can show "Water intake: reduced" instead of the raw n-gram. Absent on
+  // predictions stored before attribution existed — fall back to `feature`.
+  top_features: Array<{ feature: string; weight: number; field?: string | null; value?: string | null }>;
   model_version: string;
   disclaimer: string;
 };
@@ -210,5 +213,29 @@ export async function getFeedbackSummary(): Promise<FeedbackSummary> {
     throw new Error(`Feedback summary request failed (${response.status})`);
   }
   const body = (await response.json()) as { success: boolean; data: FeedbackSummary };
+  return body.data;
+}
+
+// The admin governance panel used to fetch these two with a bare fetch() and no
+// Authorization header, so with AUTH_ENFORCE=true the gateway answered 401 and
+// the panel silently rendered empty. Route them through authHeaders() like
+// every other call.
+export async function getModelInfo<T = unknown>(): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}/api/model/info`, { headers: authHeaders() });
+  if (!response.ok) {
+    throw new Error(`Model info request failed (${response.status})`);
+  }
+  const body = (await response.json()) as { success: boolean; data: T };
+  return body.data;
+}
+
+export async function getOntologySummary<T = unknown>(language = "en"): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}/api/ontology/summary?language=${encodeURIComponent(language)}`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Ontology summary request failed (${response.status})`);
+  }
+  const body = (await response.json()) as { success: boolean; data: T };
   return body.data;
 }

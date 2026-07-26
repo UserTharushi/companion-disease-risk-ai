@@ -122,8 +122,6 @@ export interface VetClinic {
   phone: string;
   email?: string;
   specializations: string[];
-  rating: number;
-  reviewCount: number;
   isOpen: boolean;
   surgeons: Surgeon[];
 }
@@ -135,7 +133,13 @@ export interface Surgeon {
   specialization: string;
   qualifications: string[];
   photoURL?: string;
-  rating: number;
+  /**
+   * Optional link to the veterinarian's `users` account (role=vet). A surgeon
+   * is the clinic-facing listing patients book with; the account is who logs
+   * in and records diagnoses. Linking them makes the two the same person
+   * instead of two unrelated records that happen to share a name.
+   */
+  userId?: string;
   availableSlots: TimeSlot[];
 }
 

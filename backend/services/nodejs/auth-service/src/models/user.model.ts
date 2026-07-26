@@ -14,6 +14,13 @@ export interface UserDocument extends Document {
   preferredLanguage: "en" | "si" | "ta";
   mustChangePassword: boolean;
   role: "owner" | "vet" | "admin";
+  // Admin-provisioned veterinarian details. These lived only in the admin's
+  // browser (localStorage "managed veterinarians"), so the roster vanished on
+  // another machine even though the accounts existed here.
+  doctorRegistrationNumber?: string;
+  age?: string;
+  gender?: string;
+  status: "active" | "inactive";
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidate: string): Promise<boolean>;
@@ -32,7 +39,11 @@ const userSchema = new Schema<UserDocument>(
     bio:          { type: String, trim: true },
     preferredLanguage: { type: String, enum: ["en", "si", "ta"], default: "en" },
     mustChangePassword: { type: Boolean, default: false },
-    role:         { type: String, enum: ["owner", "vet", "admin"], default: "owner" },
+    role:         { type: String, enum: ["owner", "vet", "admin"], default: "owner", index: true },
+    doctorRegistrationNumber: { type: String, trim: true },
+    age:          { type: String, trim: true },
+    gender:       { type: String, trim: true },
+    status:       { type: String, enum: ["active", "inactive"], default: "active" },
   },
   { timestamps: true },
 );

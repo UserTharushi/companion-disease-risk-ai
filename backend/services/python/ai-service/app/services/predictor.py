@@ -4,6 +4,7 @@ artifacts are missing — never raises."""
 from __future__ import annotations
 
 import logging
+import re
 
 import numpy as np
 
@@ -22,8 +23,99 @@ MODEL_VERSION = "v1"
 TOP_N_DISEASES = 3
 
 
-def _predict_conditions(text: str) -> tuple[list[DiseaseRisk], list[TopFeature], float]:
-    """Model A: returns (top-N diseases, top contributing features, top prob)."""
+# sklearn's default token_pattern — reproduced so an n-gram can be matched
+# against a source fragment using exactly the tokens the vectorizer produced.
+_TOKEN_RE = re.compile(r"(?u)\b\w\w+\b")
+
+
+def _tokens(text: str) -> list[str]:
+    return _TOKEN_RE.findall(text.lower())
+
+
+def _contains(haystack: list[str], needle: list[str]) -> bool:
+    """True if `needle` appears as a contiguous run inside `haystack`."""
+    span = len(needle)
+    if not span or span > len(haystack):
+        return False
+    return any(haystack[i:i + span] == needle for i in range(len(haystack) - span + 1))
+
+
+def _attribute(contributions: list[tuple[str, float]],
+               payload: SymptomPayload) -> list[TopFeature]:
+    """Fold raw n-grams back onto the form fields that produced them.
+
+    TF-IDF turns one rendered phrase into several overlapping n-grams
+    ("less", "drinking less", "less water" all come from "is drinking less
+    water"). Listing them separately makes a single answer look like several
+    independent findings and fills the chart with template connectives. Since
+    the classifier is linear, a phrase's true contribution to the log-odds is
+    the sum of its n-grams' contributions, so aggregate by source and keep the
+    strongest n-gram as the representative.
+    """
+    sources = [(field, value, _tokens(fragment))
+               for fragment, field, value in feature_bridge.explain_sources(payload)]
+
+    totals: dict[tuple[str, str], float] = {}
+    representative: dict[tuple[str, str], tuple[str, float]] = {}
+    for name, weight in contributions:
+        ngram = _tokens(name)
+        for field, value, fragment_tokens in sources:
+            if not _contains(fragment_tokens, ngram):
+                continue
+            key = (field, value)
+            totals[key] = totals.get(key, 0.0) + weight
+            best = representative.get(key)
+            if best is None or abs(weight) > abs(best[1]):
+                representative[key] = (name, weight)
+            break  # first matching source owns the n-gram
+
+    ranked = sorted(totals.items(), key=lambda kv: abs(kv[1]), reverse=True)[:5]
+    return [
+        TopFeature(
+            feature=representative[key][0],
+            weight=round(total, 4),
+            field=key[0],
+            value=key[1],
+        )
+        for key, total in ranked
+    ]
+
+
+def reattribute_stored(top_features: list[dict], payload_dict: dict | None) -> list[dict]:
+    """Re-derive field/value for predictions saved before attribution existed.
+
+    Older rows stored only the raw n-gram and its weight, so history renders
+    them as "less" / "has" / "water is". The originating payload was persisted
+    alongside, so the predict-time mapping can simply be replayed over those
+    n-grams. Returns an empty list when nothing maps — showing no explanation
+    beats showing sentence fragments.
+    """
+    if not top_features:
+        return top_features
+    if all(feature.get("field") for feature in top_features):
+        return top_features
+    if not payload_dict:
+        return []
+    try:
+        payload = SymptomPayload(**payload_dict)
+    except Exception as ex:
+        logger.debug("Could not replay attribution for stored prediction: %s", ex)
+        return []
+    contributions = [
+        (str(feature.get("feature", "")), float(feature.get("weight", 0.0)))
+        for feature in top_features
+    ]
+    return [feature.model_dump() for feature in _attribute(contributions, payload)]
+
+
+def _predict_conditions(text: str,
+                        payload: SymptomPayload | None = None,
+                        ) -> tuple[list[DiseaseRisk], list[TopFeature], float]:
+    """Model A: returns (top-N diseases, top contributing features, top prob).
+
+    `payload` is optional so the offline expert-review tooling can still call
+    this with text alone; without it the raw n-grams are returned unaggregated.
+    """
     model = model_store.get_condition_model()
     if model is None:
         return [], [], 0.0
@@ -42,7 +134,10 @@ def _predict_conditions(text: str) -> tuple[list[DiseaseRisk], list[TopFeature],
         nz = vec.nonzero()[1]
         contributions = [(vectorizer.get_feature_names_out()[j], float(coefs[j] * vec[0, j])) for j in nz]
         contributions.sort(key=lambda t: abs(t[1]), reverse=True)
-        top_features = [TopFeature(feature=name, weight=round(w, 4)) for name, w in contributions[:5]]
+        if payload is not None:
+            top_features = _attribute(contributions, payload)
+        else:
+            top_features = [TopFeature(feature=name, weight=round(w, 4)) for name, w in contributions[:5]]
     except Exception as ex:
         logger.debug("Feature attribution skipped: %s", ex)
 
@@ -105,7 +200,7 @@ def predict(payload: SymptomPayload) -> PredictionResponse:
     tokens = feature_bridge.payload_to_tokens(payload)
     severity = feature_bridge.severity_index(payload)
 
-    diseases, top_features, condition_prob = _predict_conditions(text)
+    diseases, top_features, condition_prob = _predict_conditions(text, payload)
     # With zero abnormal signals the model has no evidence — its intercept alone
     # would still lean "dangerous" (the dataset is ~97% dangerous), so short it to 0.
     if not tokens and model_store.get_risk_artifact() is not None:

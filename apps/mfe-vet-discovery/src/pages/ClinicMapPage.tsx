@@ -63,7 +63,6 @@ export function ClinicMapPage() {
                 ))}
               </div>
               <div className="mt-4 flex items-center justify-between text-sm text-slate-600">
-                <span>⭐ {clinic.rating} ({clinic.reviewCount} reviews)</span>
                 <span>{clinic.surgeons.length} vets</span>
               </div>
               <button className="mt-5 w-full rounded-xl bg-green-500 px-4 py-3 font-semibold text-white" onClick={() => navigate(`/vet-discovery/${clinic.id}`)}>

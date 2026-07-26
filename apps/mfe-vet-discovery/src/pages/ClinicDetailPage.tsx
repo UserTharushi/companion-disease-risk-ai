@@ -42,7 +42,6 @@ export function ClinicDetailPage() {
           <div className="mt-4 text-sm text-slate-600">
             <p>Phone: {clinic.phone}</p>
             <p>Email: {clinic.email || "-"}</p>
-            <p>Rating: {clinic.rating} ({clinic.reviewCount} reviews)</p>
           </div>
         </section>
 
@@ -54,7 +53,6 @@ export function ClinicDetailPage() {
                   <h2 className="text-2xl font-semibold text-slate-900">{surgeon.name}</h2>
                   <p className="text-slate-600">{surgeon.specialization}</p>
                 </div>
-                <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-700">⭐ {surgeon.rating}</span>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {surgeon.qualifications.map((item) => (

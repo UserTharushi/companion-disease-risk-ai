@@ -45,7 +45,10 @@ python training/train_condition_model.py   # Model A -> condition_model.joblib +
 python training/train_risk_model.py        # Model B -> risk_model.joblib + metrics
 ```
 
-Expected metrics (see `docs/ml/README.md`): Model A accuracy ≈ 0.83 / macro-F1 ≈ 0.83;
+Expected metrics (see `docs/ml/README.md`): Model A accuracy ≈ 0.90 / macro-F1 ≈ 0.91
+over 11 classes. Quote the per-class split, not just the headline: the 6 knowledge-grounded
+chronic classes score F1 0.97–1.00 because their rows are synthetic, while the 5
+real-dataset classes sit at F1 0.77–0.87 and confuse with each other.
 Model B ROC-AUC ≈ 0.96 (probability-only use — see imbalance caveat).
 
 ## 3. Full-stack smoke test (Docker Compose)
@@ -79,7 +82,10 @@ curl -X POST localhost:4000/api/pets -H "Content-Type: application/json" -H "Aut
 # 3. Predict (real ML)
 curl -X POST localhost:4000/api/predict -H "Content-Type: application/json" \
   -d '{"pet_id":"<PET_ID>","owner_id":"<UID>","species":"dog","appetite_level":"none","water_intake":"normal","activity_level":"lethargic","urine_frequency":"normal","vomiting_frequency":"persistent","diarrhea_level":"moderate","symptoms":["lethargy","loss-of-appetite"],"notes":"","symptom_duration_days":4}'
-# expect: risk_level high, Digestive Issues top, ontology_links populated, id set
+# expect: risk_level medium, Pancreatitis top (~0.74), ontology_links populated, id set
+# Pancreatitis outranking Digestive Issues here is expected, not a regression: persistent
+# vomiting + anorexia is a defensible differential and the urgency recommendation is
+# identical. See the acute-overlap note in docs/ml/README.md.
 
 # 4. Three-agent pipeline in one call (frontend's primary path)
 curl -X POST localhost:4000/api/agent/analyze -H "Content-Type: application/json" \

@@ -77,8 +77,23 @@ export async function deleteClinic(clinicId: string): Promise<void> {
   if (!response.ok || !data.success) throw new Error(data.message || "Delete failed");
 }
 
-export async function addSurgeon(clinicId: string, payload: { name: string; specialization?: string }): Promise<{ id: string }> {
+export async function addSurgeon(
+  clinicId: string,
+  payload: { name: string; specialization?: string; userId?: string },
+): Promise<{ id: string }> {
   return request<{ id: string }>(`/api/clinics/${clinicId}/surgeons`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+/**
+ * Link (or unlink, with userId: null) a clinic surgeon to the veterinarian's
+ * auth account, so the doctor patients book with is the same entity as the
+ * user who logs in and records diagnoses.
+ */
+export async function updateSurgeon(
+  surgeonId: string,
+  payload: { name?: string; specialization?: string; userId?: string | null },
+): Promise<unknown> {
+  return request<unknown>(`/api/clinics/surgeons/${surgeonId}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 
 export async function deleteSurgeon(surgeonId: string): Promise<void> {

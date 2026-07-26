@@ -7,7 +7,6 @@ const USER_EMAIL_BY_ROLE_PREFIX = "companion_ai_user_email_role_";
 const USER_ROLE_BY_EMAIL_KEY = "companion_ai_user_role_by_email";
 const PROFILE_NAME_KEY = "companion_ai_profile_name";
 const PROFILE_NAME_BY_ROLE_PREFIX = "companion_ai_profile_name_role_";
-const MANAGED_VETERINARIANS_KEY = "companion_ai_managed_veterinarians";
 // sessionStorage key — resets every new browser tab/window
 const SESSION_STARTED_KEY = "companion_ai_session_started";
 const INFO_SEEN_KEY = "companion_ai_info_seen";
@@ -136,28 +135,10 @@ export function getProfileNameForRole(role: string, fallback: string): string {
   );
 }
 
-export function getManagedVeterinarians(): ManagedVeterinarian[] {
-  const raw = localStorage.getItem(MANAGED_VETERINARIANS_KEY);
-  if (!raw) return [];
-
-  try {
-    const parsed = JSON.parse(raw) as ManagedVeterinarian[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed;
-  } catch {
-    return [];
-  }
-}
-
-export function saveManagedVeterinarians(vets: ManagedVeterinarian[]) {
-  localStorage.setItem(MANAGED_VETERINARIANS_KEY, JSON.stringify(vets));
-}
-
-export function isManagedVeterinarianEmail(email: string): boolean {
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!normalizedEmail) return false;
-  return getManagedVeterinarians().some((vet) => vet.email.trim().toLowerCase() === normalizedEmail);
-}
+// The managed-veterinarian roster moved to auth-service (GET /api/auth/users
+// ?role=veterinarian, see lib/auth-api.ts). The localStorage helpers that used
+// to live here were removed rather than left in place: they would have returned
+// an empty list on any other machine and quietly disagreed with the server.
 
 /**
  * Store user credentials during registration for later verification

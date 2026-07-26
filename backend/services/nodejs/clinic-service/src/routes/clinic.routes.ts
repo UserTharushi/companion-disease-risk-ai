@@ -31,7 +31,7 @@ function mapSurgeon(surgeon: any, slots: any[]) {
     specialization: surgeon.specialization,
     qualifications: surgeon.qualifications,
     photoURL: surgeon.photoURL,
-    rating: surgeon.rating,
+    userId: surgeon.userId,
     availableSlots: slots.filter((slot) => slot.surgeonId === surgeon._id.toString()).map(mapSlot),
   };
 }
@@ -46,8 +46,6 @@ function mapClinic(clinic: any, surgeons: any[], slots: any[]) {
     phone: clinic.phone,
     email: clinic.email,
     specializations: clinic.specializations,
-    rating: clinic.rating,
-    reviewCount: clinic.reviewCount,
     isOpen: clinic.isOpen,
     surgeons: surgeons.map((surgeon) => mapSurgeon(surgeon, slots)),
   };
@@ -240,8 +238,6 @@ clinicRouter.get("/nearby", async (req, res, next) => {
         phone: "",
         email: "",
         specializations: [] as string[],
-        rating: 0,
-        reviewCount: 0,
         isOpen: true,
         surgeons: [] as unknown[],
         distanceKm: Math.round(entry.distanceKm * 10) / 10,
@@ -303,9 +299,38 @@ clinicRouter.post("/:clinicId/surgeons", requireStaff, async (req, res, next) =>
       specialization: String(req.body.specialization || "General"),
       qualifications: Array.isArray(req.body.qualifications) ? req.body.qualifications : [],
       photoURL: req.body.photoURL ? String(req.body.photoURL) : undefined,
-      rating: 0,
+      // Optional link to the veterinarian's auth account.
+      userId: req.body.userId ? String(req.body.userId) : undefined,
     });
     res.status(201).json({ success: true, data: mapSurgeon(surgeon.toObject(), []) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/clinics/surgeons/:surgeonId — edit details or link/unlink the
+// veterinarian's account. Pass userId: null to unlink.
+clinicRouter.patch("/surgeons/:surgeonId", requireStaff, async (req, res, next) => {
+  try {
+    const set: Record<string, unknown> = {};
+    const unset: Record<string, unknown> = {};
+    if (req.body?.name !== undefined) set.name = String(req.body.name);
+    if (req.body?.specialization !== undefined) set.specialization = String(req.body.specialization);
+    if (req.body?.qualifications !== undefined) set.qualifications = req.body.qualifications;
+    if (req.body?.photoURL !== undefined) set.photoURL = String(req.body.photoURL);
+    if (req.body?.userId !== undefined) {
+      // Mongoose drops `undefined` from an update object, so clearing the link
+      // needs an explicit $unset — assigning undefined silently kept the old id.
+      if (req.body.userId === null || req.body.userId === "") unset.userId = "";
+      else set.userId = String(req.body.userId);
+    }
+    const update: Record<string, unknown> = {};
+    if (Object.keys(set).length) update.$set = set;
+    if (Object.keys(unset).length) update.$unset = unset;
+    const surgeon = await SurgeonModel.findByIdAndUpdate(req.params.surgeonId, update, { new: true }).lean();
+    if (!surgeon) return res.status(404).json({ success: false, message: "Surgeon not found" });
+    const slots = await TimeSlotModel.find({ surgeonId: req.params.surgeonId }).lean();
+    res.json({ success: true, data: mapSurgeon(surgeon, slots) });
   } catch (err) {
     next(err);
   }

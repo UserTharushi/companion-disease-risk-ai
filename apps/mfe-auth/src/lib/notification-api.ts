@@ -46,6 +46,27 @@ export async function markNotificationRead(id: string): Promise<void> {
   });
 }
 
+/**
+ * Legacy `/send` alias, used to deliver admin-provisioned vet credentials.
+ * Must carry the bearer token: the admin page called this with a bare fetch()
+ * and only a Content-Type header, so with AUTH_ENFORCE=true the gateway
+ * answered 401 and the new vet never received their sign-in details.
+ */
+export async function sendNotification(payload: {
+  type: string;
+  recipientEmail: string;
+  subject: string;
+  message: string;
+  metadata?: Record<string, string>;
+}): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/notifications/send`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Notification send failed (${response.status})`);
+}
+
 export async function markAllNotificationsRead(): Promise<void> {
   await fetch(`${API_BASE_URL}/api/notifications/read-all`, {
     method: "PATCH",

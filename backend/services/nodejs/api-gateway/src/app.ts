@@ -29,6 +29,7 @@ const PET_URL          = process.env.PET_SERVICE_URL          || "http://localho
 const CLINIC_URL       = process.env.CLINIC_SERVICE_URL       || "http://localhost:4003";
 const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:4004";
 const VACCINATION_URL  = process.env.VACCINATION_SERVICE_URL  || "http://localhost:4005";
+const ADMIN_URL        = process.env.ADMIN_SERVICE_URL        || "http://localhost:4006";
 const AI_URL           = process.env.AI_SERVICE_URL           || "http://localhost:8001";
 const AGENT_URL        = process.env.AGENT_SERVICE_URL        || "http://localhost:8002";
 
@@ -72,8 +73,12 @@ app.use("/api/pets",         proxyTo(PET_URL));
 app.use("/api/clinics",      proxyTo(CLINIC_URL));
 app.use("/api/appointments", proxyTo(CLINIC_URL));
 app.use("/api/inquiries",    proxyTo(CLINIC_URL));
+app.use("/api/access-grants", proxyTo(CLINIC_URL));
 app.use("/api/notifications",proxyTo(NOTIFICATION_URL));
 app.use("/api/vaccinations", proxyTo(VACCINATION_URL));
+app.use("/api/approvals",    proxyTo(ADMIN_URL));
+app.use("/api/tickets",      proxyTo(ADMIN_URL));
+app.use("/api/audit",        proxyTo(ADMIN_URL));
 // AI service serves /predict without the /api prefix
 app.use("/api/predict", proxy(AI_URL, { ...PROXY_OPTS, proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api\/predict/, "/predict") }));
 // Compatibility: frontends call /api/predictions -> AI service serves /predictions/*

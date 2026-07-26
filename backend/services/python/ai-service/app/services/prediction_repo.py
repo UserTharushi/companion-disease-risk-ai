@@ -40,6 +40,15 @@ def _serialize(doc: dict) -> dict:
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
         doc["created_at"] = created.isoformat()
+
+    # Predictions saved before feature attribution existed carry bare n-grams
+    # ("less", "has"). Replay the mapping against the stored payload so history
+    # explains itself the same way a fresh assessment does.
+    features = doc.get("top_features")
+    if features:
+        from app.services import predictor  # local import: avoids an import cycle
+
+        doc["top_features"] = predictor.reattribute_stored(features, doc.get("payload"))
     return doc
 
 

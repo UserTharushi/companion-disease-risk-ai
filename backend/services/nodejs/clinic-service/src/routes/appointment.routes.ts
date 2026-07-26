@@ -1,5 +1,5 @@
 import { Router, type Request } from "express";
-import { AppointmentModel, TimeSlotModel } from "../models/clinic.models";
+import { AppointmentModel, TimeSlotModel, grantAccessForAppointment } from "../models/clinic.models";
 
 export const appointmentRouter = Router();
 
@@ -84,6 +84,16 @@ appointmentRouter.post("/", async (req, res, next) => {
       status: req.body.status || "pending",
       notes: req.body.notes || "",
     });
+
+    // Booking is what establishes the vet↔pet relationship. Failing to record
+    // it must not fail the booking itself — the appointment is the source of
+    // truth and the grant can be rebuilt from it.
+    await grantAccessForAppointment({
+      petId: appointment.petId,
+      ownerId: appointment.ownerId,
+      surgeonId: appointment.surgeonId,
+      appointmentId: String(appointment._id),
+    }).catch((err) => console.warn("[clinic-service] access grant failed", err));
 
     res.status(201).json({ success: true, data: mapAppointment(appointment) });
   } catch (err) {

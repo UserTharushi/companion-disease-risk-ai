@@ -8,8 +8,6 @@ export interface ClinicDocument extends Document {
   phone: string;
   email?: string;
   specializations: string[];
-  rating: number;
-  reviewCount: number;
   isOpen: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -21,7 +19,8 @@ export interface SurgeonDocument extends Document {
   specialization: string;
   qualifications: string[];
   photoURL?: string;
-  rating: number;
+  /** Optional link to the veterinarian's auth account (users, role=vet). */
+  userId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -56,8 +55,9 @@ const ClinicSchema = new Schema<ClinicDocument>(
     phone: { type: String, required: true },
     email: { type: String },
     specializations: [{ type: String, required: true }],
-    rating: { type: Number, default: 0 },
-    reviewCount: { type: Number, default: 0 },
+    // No rating/reviewCount: there is no review feature in the system, so any
+    // value here would be invented. Add them back alongside a real reviews
+    // implementation, not before.
     isOpen: { type: Boolean, default: true },
   },
   { timestamps: true }
@@ -70,7 +70,7 @@ const SurgeonSchema = new Schema<SurgeonDocument>(
     specialization: { type: String, required: true },
     qualifications: [{ type: String, required: true }],
     photoURL: { type: String },
-    rating: { type: Number, default: 0 },
+    userId: { type: String, index: true },
   },
   { timestamps: true }
 );
@@ -97,6 +97,101 @@ const AppointmentSchema = new Schema<AppointmentDocument>(
   },
   { timestamps: true }
 );
+
+/**
+ * Relationship-based access control.
+ *
+ * A veterinarian may read a pet's health information only while an active
+ * grant exists linking them to that pet. Grants arise two ways:
+ *
+ *   "appointment"    — created automatically when the owner books a slot with a
+ *                      surgeon whose listing is linked to a vet account. This is
+ *                      what gives continuity of care: the grant outlives the
+ *                      single visit, so a returning patient's history stays
+ *                      available to the vet who treated them.
+ *   "owner_consent"  — created explicitly by the owner, and revocable by them at
+ *                      any time. This is the data-ownership escape hatch: sharing
+ *                      records with a second opinion without a booking.
+ *
+ * Revoking sets revokedAt rather than deleting, so the access history itself is
+ * auditable — who could see what, and when that ended.
+ */
+export interface PetAccessGrantDocument extends Document {
+  petId: string;
+  ownerId: string;
+  vetUserId: string;
+  source: "appointment" | "owner_consent";
+  appointmentId?: string;
+  grantedAt: string;
+  revokedAt?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const PetAccessGrantSchema = new Schema<PetAccessGrantDocument>(
+  {
+    petId:         { type: String, required: true, index: true },
+    ownerId:       { type: String, required: true, index: true },
+    vetUserId:     { type: String, required: true, index: true },
+    source:        { type: String, required: true, enum: ["appointment", "owner_consent"] },
+    appointmentId: { type: String },
+    grantedAt:     { type: String, required: true },
+    revokedAt:     { type: String },
+  },
+  { timestamps: true }
+);
+
+// One live grant per (pet, vet, source); re-booking reuses it rather than
+// stacking duplicates.
+PetAccessGrantSchema.index({ petId: 1, vetUserId: 1, source: 1 });
+
+export const PetAccessGrantModel = model<PetAccessGrantDocument>("PetAccessGrant", PetAccessGrantSchema);
+
+export function toGrant(doc: PetAccessGrantDocument) {
+  return {
+    id: String(doc._id),
+    petId: doc.petId,
+    ownerId: doc.ownerId,
+    vetUserId: doc.vetUserId,
+    source: doc.source,
+    appointmentId: doc.appointmentId,
+    grantedAt: doc.grantedAt,
+    revokedAt: doc.revokedAt,
+    active: !doc.revokedAt,
+  };
+}
+
+/**
+ * Establish (or reactivate) the appointment-based grant for a booking.
+ * No-op when the surgeon has no linked vet account — a clinic listing with no
+ * system user cannot be given access to anything.
+ */
+export async function grantAccessForAppointment(params: {
+  petId: string;
+  ownerId: string;
+  surgeonId: string;
+  appointmentId: string;
+}): Promise<void> {
+  const surgeon = await SurgeonModel.findById(params.surgeonId).lean();
+  const vetUserId = (surgeon as { userId?: string } | null)?.userId;
+  if (!vetUserId || !params.petId || !params.ownerId) return;
+
+  await PetAccessGrantModel.findOneAndUpdate(
+    { petId: params.petId, vetUserId, source: "appointment" },
+    {
+      $set: {
+        petId: params.petId,
+        ownerId: params.ownerId,
+        vetUserId,
+        source: "appointment",
+        appointmentId: params.appointmentId,
+        grantedAt: new Date().toISOString(),
+      },
+      $unset: { revokedAt: "" },
+    },
+    { upsert: true, new: true }
+  );
+}
 
 export interface InquiryDocument extends Document {
   ownerId: string;
@@ -140,9 +235,28 @@ function dayAt(hour: number, offsetDays = 0): string {
   return date.toISOString();
 }
 
+/**
+ * Inserts demo clinics, surgeons and time slots.
+ *
+ * Opt-in via SEED_DEMO_DATA=true. These are invented records (fixed names,
+ * addresses and coordinates), so seeding them by default made the admin
+ * dashboard report hardcoded rows as if they were real platform data. With the
+ * flag off the platform starts empty and clinics are created through the admin
+ * UI — which also exercises the real CRUD path.
+ *
+ * Note the booking, nearby-search, clinic-map and agent clinic-recommendation
+ * flows all need at least one clinic to demo, so turn this on (or add a clinic
+ * by hand) before a walkthrough.
+ */
 export async function seedClinicData(): Promise<void> {
+  if (String(process.env.SEED_DEMO_DATA || "false").toLowerCase() !== "true") {
+    console.log("[clinic-service] demo seed skipped (set SEED_DEMO_DATA=true to enable)");
+    return;
+  }
+
   const existingCount = await ClinicModel.countDocuments();
   if (existingCount > 0) return;
+  console.log("[clinic-service] seeding demo clinics (SEED_DEMO_DATA=true)");
 
   const clinics = await ClinicModel.insertMany([
     {
@@ -153,8 +267,6 @@ export async function seedClinicData(): Promise<void> {
       phone: "+94 11 234 5678",
       email: "hello@greenpaws.lk",
       specializations: ["Small Animals", "Dermatology"],
-      rating: 4.8,
-      reviewCount: 124,
       isOpen: true,
     },
     {
@@ -165,8 +277,6 @@ export async function seedClinicData(): Promise<void> {
       phone: "+94 81 456 7890",
       email: "contact@carepet.lk",
       specializations: ["Surgery", "Internal Medicine"],
-      rating: 4.6,
-      reviewCount: 89,
       isOpen: true,
     },
   ]);
@@ -180,7 +290,6 @@ export async function seedClinicData(): Promise<void> {
       specialization: "Dermatology",
       qualifications: ["DVM", "MVetMed"],
       photoURL: "",
-      rating: 4.9,
     },
     {
       clinicId: greenPaws._id.toString(),
@@ -188,7 +297,6 @@ export async function seedClinicData(): Promise<void> {
       specialization: "General Practice",
       qualifications: ["DVM"],
       photoURL: "",
-      rating: 4.7,
     },
     {
       clinicId: carePet._id.toString(),
@@ -196,7 +304,6 @@ export async function seedClinicData(): Promise<void> {
       specialization: "Surgery",
       qualifications: ["DVM", "MS Surgery"],
       photoURL: "",
-      rating: 4.8,
     },
     {
       clinicId: carePet._id.toString(),
@@ -204,7 +311,6 @@ export async function seedClinicData(): Promise<void> {
       specialization: "Internal Medicine",
       qualifications: ["DVM", "PhD"],
       photoURL: "",
-      rating: 4.7,
     },
   ]);
 

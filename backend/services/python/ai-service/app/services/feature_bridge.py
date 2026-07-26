@@ -74,35 +74,73 @@ def prior_correct(p_danger: float,
     return num / (num + (1.0 - p_danger) * b)
 
 
-def _vital_phrases(p: SymptomPayload) -> list[str]:
-    phrases: list[str] = []
+def _vital_phrase_specs(p: SymptomPayload) -> list[tuple[str, str, str]]:
+    """(rendered phrase, form field, value) for each abnormal vital.
+
+    The field/value provenance lets `explain_sources` map the model's raw
+    n-grams back onto the form controls the owner actually filled in, so the
+    explanation reads "Water intake: reduced" instead of "less water".
+    Keep the phrase strings byte-identical to what the models were trained on.
+    """
+    specs: list[tuple[str, str, str]] = []
     if p.appetite_level in {"reduced", "mild", "moderate"}:
-        phrases.append("has a reduced appetite")
+        specs.append(("has a reduced appetite", "appetite", "reduced"))
     elif p.appetite_level in {"none", "severe"}:
-        phrases.append("refuses to eat")
+        specs.append(("refuses to eat", "appetite", "none"))
     if p.water_intake in {"increased", "moderate", "severe"}:
-        phrases.append("is drinking much more water than usual")
+        specs.append(("is drinking much more water than usual", "water_intake", "increased"))
     elif p.water_intake in {"reduced", "mild"}:
-        phrases.append("is drinking less water")
+        specs.append(("is drinking less water", "water_intake", "reduced"))
     if p.activity_level in {"lethargic", "moderate", "severe"}:
-        phrases.append("is very lethargic and inactive")
+        specs.append(("is very lethargic and inactive", "activity", "lethargic"))
     elif p.activity_level == "mild":
-        phrases.append("is less active than normal")
+        specs.append(("is less active than normal", "activity", "reduced"))
     if p.urine_frequency in {"increased", "mild", "moderate", "severe"}:
-        phrases.append("is urinating more frequently")
+        specs.append(("is urinating more frequently", "urination", "increased"))
     elif p.urine_frequency == "reduced":
-        phrases.append("is urinating less and straining to pass urine")
+        specs.append(("is urinating less and straining to pass urine", "urination", "reduced"))
     if p.vomiting_frequency in {"once", "mild"}:
-        phrases.append("vomited once")
+        specs.append(("vomited once", "vomiting", "once"))
     elif p.vomiting_frequency in {"multiple", "moderate"}:
-        phrases.append("has vomited multiple times")
+        specs.append(("has vomited multiple times", "vomiting", "multiple"))
     elif p.vomiting_frequency in {"persistent", "severe"}:
-        phrases.append("keeps vomiting persistently")
+        specs.append(("keeps vomiting persistently", "vomiting", "persistent"))
     if p.diarrhea_level in {"mild", "moderate"}:
-        phrases.append("has diarrhea")
+        specs.append(("has diarrhea", "diarrhea", "mild"))
     elif p.diarrhea_level == "severe":
-        phrases.append("has severe watery diarrhea")
-    return phrases
+        specs.append(("has severe watery diarrhea", "diarrhea", "severe"))
+    return specs
+
+
+def _vital_phrases(p: SymptomPayload) -> list[str]:
+    return [phrase for phrase, _field, _value in _vital_phrase_specs(p)]
+
+
+def explain_sources(p: SymptomPayload) -> list[tuple[str, str, str]]:
+    """Every meaningful fragment of `payload_to_text`, with its form origin.
+
+    Returned as (fragment, field, value). `predictor` assigns each model
+    n-gram to the first fragment that contains it contiguously; n-grams that
+    match nothing are template scaffolding ("my 4 year old labrador dog") or
+    cross-phrase artifacts ("water is") and are dropped from the explanation.
+    """
+    sources: list[tuple[str, str, str]] = []
+    condition = body_condition(p)
+    if condition:
+        sources.append((condition, "body_condition", condition))
+    breed = (p.breed or "").strip()
+    if breed:
+        sources.append((breed.lower(), "breed", breed))
+    sources.extend(_vital_phrase_specs(p))
+    for symptom_id in p.symptoms:
+        token = CHECKLIST_TOKENS.get(symptom_id)
+        if token:
+            sources.append((token, "symptom", symptom_id))
+    sources.append((f"symptoms present for {p.symptom_duration_days} days",
+                    "duration", str(p.symptom_duration_days)))
+    if p.notes and p.notes.strip():
+        sources.append((p.notes.strip().lower(), "notes", ""))
+    return sources
 
 
 # Coarse breed size classes -> ideal adult weight range (kg). Used to turn a

@@ -40,7 +40,7 @@ since the rows are synthetic. Overlapping acute presentations (e.g. severe
 vomiting) may legitimately rank Pancreatitis above Digestive Issues — a
 clinically defensible differential; the urgency recommendation is identical.
 
-### Original 5-class notes
+### Pipeline, train/serve bridging & results
 
 - Pipeline: `TfidfVectorizer(ngram_range=(1,2), min_df=2, max_features=20000)` →
   `LogisticRegression(max_iter=1000, class_weight="balanced")`.
@@ -49,9 +49,14 @@ clinically defensible differential; the urgency recommendation is identical.
   sentence; at train time ~500 augmentation rows are generated through the *same*
   templates (`training/train_condition_model.py::build_augmented_rows`), closing the
   distribution gap between the HF free text and rendered form text.
-- Split: 80/20 stratified over 2,500 rows (2,000 HF + 500 augmented).
-- Results (`condition_metrics.json`): **accuracy 0.826, macro-F1 0.826**; per-class P/R and
-  the confusion matrix are in the JSON, plot at `docs/ml/condition_confusion_matrix.png`.
+- Split: 80/20 stratified over 5,200 rows (2,000 HF + 500 augmented + 2,700 chronic
+  synthetic) = **4,160 train / 1,040 test**.
+- Results (`condition_metrics.json`): **accuracy 0.903, macro-F1 0.908** across all 11
+  classes. The headline is lifted by the synthetic chronic classes (F1 0.971–1.000); the
+  5 real-dataset classes are the honest signal — Skin Irritations 0.768, Parasites 0.796,
+  Ear Infections 0.796, Mobility Problems 0.810, Digestive Issues 0.868 — and they confuse
+  with one another. Per-class P/R and the confusion matrix are in the JSON, plot at
+  `docs/ml/condition_confusion_matrix.png`.
 - Explainability: per-prediction top TF-IDF term contributions are returned as
   `top_features` in the API response.
 

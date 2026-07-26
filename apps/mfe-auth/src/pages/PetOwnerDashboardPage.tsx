@@ -32,6 +32,7 @@ import {
 } from "../lib/pet-api";
 import { createAppointment, listAppointments, listClinics, listNearbyClinics, updateAppointment, listInquiries, createInquiry, type NearbyClinic } from "../lib/clinic-api";
 import { getPredictionHistory, type PredictionHistoryItem } from "../lib/prediction-api";
+import { listUpcomingVaccinations } from "../lib/vaccination-api";
 import { sendChatMessage } from "../lib/agent-api";
 import type { Appointment as BackendAppointment, VetClinic } from "@companion-ai/shared-types";
 
@@ -297,6 +298,41 @@ export function PetOwnerDashboardPage() {
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pets.length, language]);
+  // Soonest upcoming vaccination across the owner's pets, or null when none is
+  // due. This banner used to render a hardcoded "due in 3 days" for everyone,
+  // including owners with no vaccination records at all.
+  const [dueVaccination, setDueVaccination] = useState<{ petName: string; vaccineName: string; days: number } | null>(null);
+  const petIdKey = useMemo(() => pets.map((pet) => pet.id).join(","), [pets]);
+
+  useEffect(() => {
+    if (!pets.length) { setDueVaccination(null); return; }
+    let active = true;
+    Promise.all(
+      pets.map((pet) =>
+        listUpcomingVaccinations(pet.id)
+          .then((records) => records.map((record) => ({ record, petName: pet.name })))
+          .catch(() => [] as { record: { vaccineName: string; nextDueAt: string }; petName: string }[])
+      )
+    )
+      .then((groups) => {
+        if (!active) return;
+        const now = Date.now();
+        const soonest = groups
+          .flat()
+          .map(({ record, petName }) => ({
+            petName,
+            vaccineName: record.vaccineName,
+            days: Math.ceil((new Date(record.nextDueAt).getTime() - now) / 86_400_000),
+          }))
+          .filter((item) => Number.isFinite(item.days))
+          .sort((a, b) => a.days - b.days)[0];
+        setDueVaccination(soonest ?? null);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [petIdKey]);
+
   const [petsLoading, setPetsLoading] = useState(false);
   const [savingPet, setSavingPet] = useState(false);
   const [deletingPetId, setDeletingPetId] = useState<string | null>(null);
@@ -1059,23 +1095,31 @@ export function PetOwnerDashboardPage() {
                       ))}
                     </div>
 
-                    {/* Vaccination banner below stats */}
-                    <div className="mt-4 w-full max-w-[560px] rounded-xl border border-amber-200/60 bg-amber-50/60 px-4 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100">
-                            <Syringe className="h-4 w-4 text-amber-600" />
+                    {/* Vaccination banner — only when a record is actually due */}
+                    {dueVaccination ? (
+                      <div className="mt-4 w-full max-w-[560px] rounded-xl border border-amber-200/60 bg-amber-50/60 px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100">
+                              <Syringe className="h-4 w-4 text-amber-600" />
+                            </div>
+                            <div>
+                              <p className="text-[13px] font-medium text-amber-900">
+                                {dueVaccination.days <= 0
+                                  ? (language === "si" ? `${dueVaccination.petName} සඳහා ${dueVaccination.vaccineName} අදම නියමිතයි` : language === "ta" ? `${dueVaccination.petName}க்கு ${dueVaccination.vaccineName} இன்றே நிலுவை` : `${dueVaccination.vaccineName} is due today for ${dueVaccination.petName}`)
+                                  : dueVaccination.days === 1
+                                    ? (language === "si" ? `${dueVaccination.petName} සඳහා ${dueVaccination.vaccineName} හෙට නියමිතයි` : language === "ta" ? `${dueVaccination.petName}க்கு ${dueVaccination.vaccineName} நாளை நிலுவை` : `${dueVaccination.vaccineName} is due tomorrow for ${dueVaccination.petName}`)
+                                    : (language === "si" ? `${dueVaccination.petName} සඳහා ${dueVaccination.vaccineName} දින ${dueVaccination.days}කින් නියමිතයි` : language === "ta" ? `${dueVaccination.petName}க்கு ${dueVaccination.vaccineName} ${dueVaccination.days} நாட்களில் நிலுவை` : `${dueVaccination.vaccineName} is due in ${dueVaccination.days} days for ${dueVaccination.petName}`)}
+                              </p>
+                              <p className="text-[12px] text-amber-700/70">{language === "si" ? "එන්නත් වාර්තා පරීක්ෂා කර ඉදිරි බූස්ටර වෙන් කරන්න." : language === "ta" ? "தடுப்பூசி பதிவுகளைச் சரிபார்த்து அடுத்த பூஸ்டரை பதிவு செய்யவும்." : "Check vaccination records and schedule upcoming boosters."}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-[13px] font-medium text-amber-900">{tr("vaccinationDueSoon")}</p>
-                            <p className="text-[12px] text-amber-700/70">{language === "si" ? "එන්නත් වාර්තා පරීක්ෂා කර ඉදිරි බූස්ටර වෙන් කරන්න." : language === "ta" ? "தடுப்பூசி பதிவுகளைச் சரிபார்த்து அடுத்த பூஸ்டரை பதிவு செய்யவும்." : "Check vaccination records and schedule upcoming boosters."}</p>
-                          </div>
+                          <Button size="sm" variant="secondary" onClick={() => setActiveTab("clinics")}>
+                            {language === "si" ? "වෙන් කරන්න" : language === "ta" ? "பதிவு செய்" : "Schedule"} <ArrowRight className="h-3 w-3" />
+                          </Button>
                         </div>
-                        <Button size="sm" variant="secondary" onClick={() => setActiveTab("clinics")}>
-                          Schedule <ArrowRight className="h-3 w-3" />
-                        </Button>
                       </div>
-                    </div>
+                    ) : null}
 
                     {/* Your pets moved up to reduce whitespace */}
                     <div>

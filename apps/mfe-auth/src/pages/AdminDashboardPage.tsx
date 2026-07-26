@@ -3,16 +3,13 @@ import { useNavigate } from "react-router-dom";
 import {
   getAccessToken,
   getProfileNameForRole,
-  getManagedVeterinarians,
-  ManagedVeterinarian,
   getVerifiedRole,
   logout,
-  saveManagedVeterinarians,
   saveProfileName,
 } from "../lib/session";
 import { ThemeSwitcher } from "../components/ThemeSwitcher";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
-import { getMyProfile, registerUser, updateMyProfile } from "../lib/auth-api";
+import { deleteManagedUser, getMyProfile, listUsersByRole, registerUser, updateManagedUser, updateMyProfile, type ManagedUser } from "../lib/auth-api";
 import {
   addSurgeon,
   addTimeSlot,
@@ -22,8 +19,21 @@ import {
   listAllAppointments,
   listClinics,
   updateClinic,
+  updateSurgeon,
 } from "../lib/clinic-api";
-import { getFeedbackSummary, type FeedbackSummary } from "../lib/prediction-api";
+import { getFeedbackSummary, getModelInfo, type FeedbackSummary } from "../lib/prediction-api";
+import { sendNotification } from "../lib/notification-api";
+import {
+  decideApproval,
+  listApprovals,
+  listAudit,
+  listTickets,
+  recordAudit,
+  updateTicketStatus,
+  type ApprovalItem,
+  type AuditEntry,
+  type Ticket,
+} from "../lib/admin-api";
 import { toast } from "../lib/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
@@ -59,35 +69,11 @@ import {
 } from "lucide-react";
 
 const ADMIN_PROFILE_KEY = "companion_ai_admin_profile";
-const ADMIN_APPROVALS_KEY = "companion_ai_admin_approvals";
-const ADMIN_TICKETS_KEY = "companion_ai_admin_tickets";
-const ADMIN_AUDIT_KEY = "companion_ai_admin_audit";
 
 type AdminSection = "overview" | "approvals" | "operations" | "clinics" | "veterinarians" | "add-veterinarian" | "governance" | "profile";
 
-interface ApprovalItem {
-  id: string;
-  type: "clinic" | "veterinarian";
-  name: string;
-  submittedAt: string;
-  status: "pending" | "approved" | "rejected";
-}
-
-interface Ticket {
-  id: string;
-  category: "booking" | "clinic" | "billing" | "abuse";
-  subject: string;
-  priority: "low" | "medium" | "high";
-  status: "open" | "in-progress" | "resolved";
-  raisedBy: string;
-}
-
-interface AuditEntry {
-  id: string;
-  action: string;
-  target: string;
-  at: string; // ISO
-}
+// ApprovalItem, Ticket and AuditEntry now come from ../lib/admin-api — the
+// shapes are owned by admin-service rather than redeclared per page.
 
 interface AdminProfile {
   name: string;
@@ -159,14 +145,6 @@ export function AdminDashboardPage() {
     condition_metrics?: { accuracy?: number; macro_f1?: number } | null;
     risk_metrics?: { roc_auc?: number; pr_auc?: number } | null;
   } | null>(null);
-  const [ontologySummary, setOntologySummary] = useState<{
-    available: boolean;
-    diseases: string[];
-    symptoms: string[];
-    vaccines: string[];
-    indicates_count: number;
-    prevents_count: number;
-  } | null>(null);
   const [feedbackSummary, setFeedbackSummary] = useState<FeedbackSummary | null>(null);
 
   const refreshClinics = useCallback(() => {
@@ -183,50 +161,72 @@ export function AdminDashboardPage() {
     listAllAppointments().then(setAppointments).catch(() => undefined);
   }, [refreshClinics]);
 
+  // The AI model / ontology reference panels were removed. modelInfo is still
+  // fetched because the operational snapshot's "AI Systems" tile reports
+  // online/degraded from whether both models actually loaded.
   useEffect(() => {
     if (activeSection !== "governance" && activeSection !== "overview") return;
-    const base = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
-    fetch(`${base}/api/model/info`)
-      .then((r) => r.json())
-      .then((body) => setModelInfo(body?.data ?? null))
-      .catch(() => undefined);
-    fetch(`${base}/api/ontology/summary?language=${language}`)
-      .then((r) => r.json())
-      .then((body) => setOntologySummary(body?.data ?? null))
+    getModelInfo()
+      .then((data) => setModelInfo((data as typeof modelInfo) ?? null))
       .catch(() => undefined);
     getFeedbackSummary()
       .then(setFeedbackSummary)
       .catch(() => undefined);
   }, [activeSection, language]);
 
-  // ── Locally persisted queues + audit trail ──
-  const [approvals, setApprovals] = useState<ApprovalItem[]>(() => loadJson(ADMIN_APPROVALS_KEY, [] as ApprovalItem[]));
-  const [tickets, setTickets] = useState<Ticket[]>(() => loadJson(ADMIN_TICKETS_KEY, [] as Ticket[]));
-  const [auditLog, setAuditLog] = useState<AuditEntry[]>(() => loadJson(ADMIN_AUDIT_KEY, []));
-  useEffect(() => { localStorage.setItem(ADMIN_APPROVALS_KEY, JSON.stringify(approvals)); }, [approvals]);
-  useEffect(() => { localStorage.setItem(ADMIN_TICKETS_KEY, JSON.stringify(tickets)); }, [tickets]);
-  useEffect(() => { localStorage.setItem(ADMIN_AUDIT_KEY, JSON.stringify(auditLog.slice(0, 50))); }, [auditLog]);
+  // ── Server-backed queues + audit trail (admin-service on :4006) ──
+  // Previously localStorage-only, so a second administrator — or the same one
+  // on another machine — saw an empty queue and no audit history.
+  const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
 
+  const refreshAdminQueues = useCallback(async () => {
+    const [nextApprovals, nextTickets, nextAudit] = await Promise.all([
+      listApprovals().catch(() => [] as ApprovalItem[]),
+      listTickets().catch(() => [] as Ticket[]),
+      listAudit(50).catch(() => [] as AuditEntry[]),
+    ]);
+    setApprovals(nextApprovals);
+    setTickets(nextTickets);
+    setAuditLog(nextAudit);
+  }, []);
+
+  useEffect(() => { void refreshAdminQueues(); }, [refreshAdminQueues]);
+
+  // Fire-and-forget: an audit write must never block or fail the action it
+  // records. Refresh afterwards so the trail reflects the server, not a guess.
   function audit(action: string, target: string) {
-    setAuditLog((prev) => [{ id: `log-${Date.now()}`, action, target, at: new Date().toISOString() }, ...prev].slice(0, 50));
+    recordAudit(action, target)
+      .then((entry) => setAuditLog((prev) => [entry, ...prev].slice(0, 50)))
+      .catch(() => undefined);
   }
 
-  // ── Veterinarians (managed accounts) ──
-  const [veterinarians, setVeterinarians] = useState<ManagedVeterinarian[]>(() => getManagedVeterinarians());
+  // ── Veterinarians (managed accounts, server-backed) ──
+  // The roster is auth-service's list of role=vet accounts. It used to be a
+  // localStorage mirror, so a second admin — or the same admin on another
+  // machine — saw an empty list even though the accounts existed.
+  const [veterinarians, setVeterinarians] = useState<ManagedUser[]>([]);
   const [editingVetId, setEditingVetId] = useState<string | null>(null);
-  const [editingVetDraft, setEditingVetDraft] = useState<ManagedVeterinarian | null>(null);
+  const [editingVetDraft, setEditingVetDraft] = useState<ManagedUser | null>(null);
   const [vetDraft, setVetDraft] = useState({
     doctorRegistrationNumber: "", name: "", age: "", email: "", phone: "",
     gender: "", dateOfBirth: "", specialization: "", address: "", photoDataUrl: "", initialPassword: "",
   });
-  useEffect(() => { saveManagedVeterinarians(veterinarians); }, [veterinarians]);
+
+  const refreshVeterinarians = useCallback(async () => {
+    const rows = await listUsersByRole("veterinarian").catch(() => [] as ManagedUser[]);
+    setVeterinarians(rows);
+  }, []);
+
+  useEffect(() => { void refreshVeterinarians(); }, [refreshVeterinarians]);
 
   // ── Clinic management drafts ──
   const [showAddClinic, setShowAddClinic] = useState(false);
   const [clinicDraft, setClinicDraft] = useState<ClinicDraft>(EMPTY_CLINIC_DRAFT);
   const [editingClinicId, setEditingClinicId] = useState<string | null>(null);
   const [editingClinicDraft, setEditingClinicDraft] = useState<ClinicDraft & { isOpen: boolean }>({ ...EMPTY_CLINIC_DRAFT, isOpen: true });
-  const [surgeonDraftByClinic, setSurgeonDraftByClinic] = useState<Record<string, { name: string; specialization: string }>>({});
+  const [surgeonDraftByClinic, setSurgeonDraftByClinic] = useState<Record<string, { name: string; specialization: string; userId: string }>>({});
   const [slotDraftBySurgeon, setSlotDraftBySurgeon] = useState<Record<string, string>>({});
   const [savingClinic, setSavingClinic] = useState(false);
 
@@ -287,6 +287,9 @@ export function AdminDashboardPage() {
   // ── Derived, real stats ──
   const activeClinicCount = clinics.filter((clinic) => clinic.isOpen !== false).length;
   const activeVetCount = veterinarians.filter((vet) => vet.status === "active").length;
+  // Clinic-facing doctor listings across every clinic (a different concept from
+  // the login accounts counted above; a listing may or may not be linked to one).
+  const clinicDoctorCount = clinics.reduce((total, clinic) => total + (clinic.surgeons?.length ?? 0), 0);
   const cancellationRate = useMemo(() => {
     if (!appointments.length) return 0;
     const cancelled = appointments.filter((a) => a.status === "cancelled").length;
@@ -341,21 +344,28 @@ export function AdminDashboardPage() {
   }
 
   // ── Approvals / tickets / broadcast ──
-  function handleApprovalDecision(id: string, decision: "approved" | "rejected") {
+  async function handleApprovalDecision(id: string, decision: "approved" | "rejected") {
     const item = approvals.find((a) => a.id === id);
-    setApprovals((prev) => prev.map((a) => (a.id === id ? { ...a, status: decision } : a)));
-    if (item) audit(decision === "approved" ? tr("approve") : tr("reject"), item.name);
+    try {
+      const updated = await decideApproval(id, decision);
+      setApprovals((prev) => prev.map((a) => (a.id === id ? updated : a)));
+      if (item) audit(decision === "approved" ? tr("approve") : tr("reject"), item.name);
+    } catch (err) {
+      toast({ title: (err as Error).message || "Could not save decision", variant: "error" });
+    }
   }
 
-  function advanceTicket(id: string) {
-    setTickets((prev) =>
-      prev.map((ticket) => {
-        if (ticket.id !== id) return ticket;
-        const next = ticket.status === "open" ? "in-progress" : "resolved";
-        audit(next === "resolved" ? tr("resolveTicket") : tr("markInProgress"), ticket.subject);
-        return { ...ticket, status: next };
-      }),
-    );
+  async function advanceTicket(id: string) {
+    const ticket = tickets.find((t) => t.id === id);
+    if (!ticket || ticket.status === "resolved") return;
+    const next = ticket.status === "open" ? "in-progress" : "resolved";
+    try {
+      const updated = await updateTicketStatus(id, next);
+      setTickets((prev) => prev.map((t) => (t.id === id ? updated : t)));
+      audit(next === "resolved" ? tr("resolveTicket") : tr("markInProgress"), ticket.subject);
+    } catch (err) {
+      toast({ title: (err as Error).message || "Could not update ticket", variant: "error" });
+    }
   }
 
   function handleBroadcastSend() {
@@ -453,10 +463,26 @@ export function AdminDashboardPage() {
       return;
     }
     try {
-      await addSurgeon(clinic.id, { name: draft.name.trim(), specialization: draft.specialization.trim() || undefined });
+      await addSurgeon(clinic.id, {
+        name: draft.name.trim(),
+        specialization: draft.specialization.trim() || undefined,
+        userId: draft.userId || undefined,
+      });
       audit(tr("addSurgeonAction"), `${draft.name.trim()} → ${clinic.name}`);
       toast({ title: tr("surgeonAdded"), variant: "success" });
-      setSurgeonDraftByClinic((prev) => ({ ...prev, [clinic.id]: { name: "", specialization: "" } }));
+      setSurgeonDraftByClinic((prev) => ({ ...prev, [clinic.id]: { name: "", specialization: "", userId: "" } }));
+      refreshClinics();
+    } catch {
+      toast({ title: tr("actionFailed"), variant: "error" });
+    }
+  }
+
+  // Link an existing clinic listing to a veterinarian's login account.
+  async function handleLinkSurgeonAccount(surgeonId: string, surgeonName: string, userId: string) {
+    try {
+      await updateSurgeon(surgeonId, { userId: userId || null });
+      const vet = veterinarians.find((v) => v.id === userId);
+      audit(userId ? tr("linkAccount") : tr("unlinkAccount"), vet ? `${surgeonName} ↔ ${vet.email}` : surgeonName);
       refreshClinics();
     } catch {
       toast({ title: tr("actionFailed"), variant: "error" });
@@ -519,6 +545,13 @@ export function AdminDashboardPage() {
         phoneNumber: vetDraft.phone.trim(),
         role: "veterinarian",
         mustChangePassword: true,
+        doctorRegistrationNumber: normalizedRegNo,
+        age: vetDraft.age.trim(),
+        gender: vetDraft.gender.trim(),
+        dateOfBirth: vetDraft.dateOfBirth,
+        specialization: vetDraft.specialization.trim(),
+        address: vetDraft.address.trim(),
+        photoURL: vetDraft.photoDataUrl || undefined,
       });
     } catch (error: unknown) {
       toast({ title: error instanceof Error ? error.message : tr("actionFailed"), variant: "error" });
@@ -527,35 +560,17 @@ export function AdminDashboardPage() {
 
     // Deliver credentials to the veterinarian ("email" via notification-service;
     // SMTP integration is a deployment concern — the payload is identical)
-    const base = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
-    void fetch(`${base}/api/notifications/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "vet_credentials",
-        recipientEmail: normalizedEmail,
-        subject: "Your PetCare AI veterinarian account",
-        message: `Hello Dr. ${vetDraft.name.trim()}, an administrator created your PetCare AI account. Sign in with username ${normalizedEmail} and your temporary password, then set a new password when prompted.`,
-        metadata: { username: normalizedEmail, registrationNumber: normalizedRegNo },
-      }),
+    void sendNotification({
+      type: "vet_credentials",
+      recipientEmail: normalizedEmail,
+      subject: "Your PetCare AI veterinarian account",
+      message: `Hello Dr. ${vetDraft.name.trim()}, an administrator created your PetCare AI account. Sign in with username ${normalizedEmail} and your temporary password, then set a new password when prompted.`,
+      metadata: { username: normalizedEmail, registrationNumber: normalizedRegNo },
     }).catch(() => undefined);
-    const newVet: ManagedVeterinarian = {
-      id: `vet-${Date.now()}`,
-      doctorRegistrationNumber: normalizedRegNo,
-      name: vetDraft.name.trim(),
-      age: vetDraft.age.trim(),
-      email: normalizedEmail,
-      phone: vetDraft.phone.trim(),
-      gender: vetDraft.gender.trim(),
-      dateOfBirth: vetDraft.dateOfBirth,
-      specialization: vetDraft.specialization.trim(),
-      address: vetDraft.address.trim(),
-      photoDataUrl: vetDraft.photoDataUrl || "",
-      status: "active",
-      createdAt: new Date().toISOString(),
-    };
-    setVeterinarians((prev) => [newVet, ...prev]);
-    audit(tr("addVet"), newVet.name);
+    // Re-read the roster from auth-service rather than optimistically pushing a
+    // client-built row — the server owns the id and the created timestamp.
+    await refreshVeterinarians();
+    audit(tr("addVet"), vetDraft.name.trim());
     setVetDraft({
       doctorRegistrationNumber: "", name: "", age: "", email: "", phone: "",
       gender: "", dateOfBirth: "", specialization: "", address: "", photoDataUrl: "", initialPassword: "",
@@ -564,28 +579,50 @@ export function AdminDashboardPage() {
     setActiveSection("veterinarians");
   }
 
-  function saveVetEdit() {
+  async function saveVetEdit() {
     if (!editingVetId || !editingVetDraft) return;
     if (!editingVetDraft.name.trim() || !editingVetDraft.phone.trim() || !editingVetDraft.specialization.trim()) {
       toast({ title: tr("missingFields"), variant: "error" });
       return;
     }
-    setVeterinarians((prev) => prev.map((vet) => (vet.id === editingVetId ? { ...editingVetDraft } : vet)));
-    audit(tr("edit"), editingVetDraft.name);
-    setEditingVetId(null);
-    setEditingVetDraft(null);
+    try {
+      const updated = await updateManagedUser(editingVetId, editingVetDraft);
+      setVeterinarians((prev) => prev.map((vet) => (vet.id === editingVetId ? updated : vet)));
+      audit(tr("edit"), updated.name);
+      setEditingVetId(null);
+      setEditingVetDraft(null);
+    } catch (error: unknown) {
+      toast({ title: error instanceof Error ? error.message : tr("actionFailed"), variant: "error" });
+    }
   }
 
-  function handleDeleteVeterinarian(id: string, name: string) {
+  // Really removes the account. Recorded diagnoses are unaffected: they are
+  // stored as text on the prediction document and the AI-vs-vet agreement
+  // metric joins on that text, not on the vet's id. Use the status toggle
+  // instead when the intent is to suspend rather than remove.
+  async function handleDeleteVeterinarian(id: string, name: string) {
     if (!window.confirm(`${tr("delete")}: "${name}"?`)) return;
-    setVeterinarians((prev) => prev.filter((vet) => vet.id !== id));
-    audit(tr("delete"), name);
+    try {
+      await deleteManagedUser(id);
+      setVeterinarians((prev) => prev.filter((vet) => vet.id !== id));
+      audit(tr("delete"), name);
+      toast({ title: `${tr("delete")} ✓`, description: name, variant: "success" });
+    } catch (error: unknown) {
+      toast({ title: error instanceof Error ? error.message : tr("actionFailed"), variant: "error" });
+    }
   }
 
-  function toggleVeterinarianStatus(id: string) {
-    setVeterinarians((prev) =>
-      prev.map((vet) => (vet.id === id ? { ...vet, status: vet.status === "active" ? "inactive" : "active" } : vet)),
-    );
+  async function toggleVeterinarianStatus(id: string) {
+    const vet = veterinarians.find((v) => v.id === id);
+    if (!vet) return;
+    const next = vet.status === "active" ? "inactive" : "active";
+    try {
+      const updated = await updateManagedUser(id, { status: next });
+      setVeterinarians((prev) => prev.map((v) => (v.id === id ? updated : v)));
+      audit(next === "active" ? tr("activate") : tr("deactivate"), vet.name);
+    } catch (error: unknown) {
+      toast({ title: error instanceof Error ? error.message : tr("actionFailed"), variant: "error" });
+    }
   }
 
   async function handleSaveProfile() {
@@ -817,9 +854,14 @@ export function AdminDashboardPage() {
                   <p className="mt-1 text-sm text-accent-subtle dark:text-accent-faint">{tr("platformGlance")}</p>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {/* Vet accounts and clinic doctors are different things — an
+                    account can log in and record diagnoses, a clinic listing is
+                    who patients book with. Showing only one made the other look
+                    wrong, so both are surfaced. */}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                   <StatTile label={tr("activeClinics")} value={clinicsLoading ? "…" : activeClinicCount} icon={Building2} />
                   <StatTile label={tr("activeVeterinarians")} value={activeVetCount} icon={Stethoscope} />
+                  <StatTile label={tr("clinicDoctors")} value={clinicsLoading ? "…" : clinicDoctorCount} icon={Stethoscope} />
                   <StatTile label={tr("totalBookings")} value={appointments.length} icon={Calendar} />
                   <StatTile label={tr("cancellationRate")} value={`${cancellationRate}%`} icon={Activity} tone={cancellationRate > 15 ? "danger" : "success"} />
                 </div>
@@ -889,29 +931,6 @@ export function AdminDashboardPage() {
                       </div>
                     </div>
 
-                    <div className={card}>
-                      <h3 className="text-[15px] font-semibold text-accent dark:text-white">{tr("aiModelPanelTitle")}</h3>
-                      <div className="mt-3 space-y-2 text-[13px]">
-                        <div className="flex items-center justify-between">
-                          <span className="text-accent-subtle">{tr("conditionModelTitle")}</span>
-                          <Badge variant={modelInfo?.condition_model_loaded ? "success" : "warning"}>
-                            {modelInfo?.condition_metrics?.accuracy != null ? `${Math.round(modelInfo.condition_metrics.accuracy * 100)}% ${tr("accuracy").toLowerCase()}` : "—"}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-accent-subtle">{tr("riskModelTitle")}</span>
-                          <Badge variant={modelInfo?.risk_model_loaded ? "success" : "warning"}>
-                            {modelInfo?.risk_metrics?.roc_auc != null ? `ROC-AUC ${modelInfo.risk_metrics.roc_auc}` : "—"}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-accent-subtle">{tr("neo4jOntology")}</span>
-                          <Badge variant={ontologySummary?.available ? "success" : "warning"}>
-                            {ontologySummary?.available ? `${ontologySummary.diseases.length} · ${ontologySummary.symptoms.length} · ${ontologySummary.vaccines.length}` : tr("neo4jUnavailable")}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1127,9 +1146,22 @@ export function AdminDashboardPage() {
                                   <p className="text-[13px] font-medium text-accent dark:text-white">{surgeon.name}</p>
                                   <p className="text-[11px] text-accent-subtle">{surgeon.specialization}</p>
                                 </div>
-                                <button onClick={() => handleRemoveSurgeon(surgeon.id, surgeon.name)} className="rounded-md p-1.5 text-accent-faint transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30">
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  {/* Which login account this clinic listing belongs to */}
+                                  <select
+                                    className={cn(inputClass, "h-8 w-52")}
+                                    value={surgeon.userId || ""}
+                                    onChange={(e) => handleLinkSurgeonAccount(surgeon.id, surgeon.name, e.target.value)}
+                                  >
+                                    <option value="">{tr("noLinkedAccount")}</option>
+                                    {veterinarians.filter((vet) => vet.status === "active" || vet.id === surgeon.userId).map((vet) => (
+                                      <option key={vet.id} value={vet.id}>{vet.name} ({vet.email})</option>
+                                    ))}
+                                  </select>
+                                  <button onClick={() => handleRemoveSurgeon(surgeon.id, surgeon.name)} className="rounded-md p-1.5 text-accent-faint transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               </div>
                               <div className="mt-2 flex flex-wrap gap-1.5">
                                 {(surgeon.availableSlots ?? []).length === 0 && <span className="text-[11px] text-accent-faint">{tr("noSlotsSpecified")}</span>}
@@ -1165,14 +1197,25 @@ export function AdminDashboardPage() {
                             className={cn(inputClass, "h-8 w-44")}
                             placeholder={tr("surgeonName")}
                             value={surgeonDraftByClinic[clinic.id]?.name || ""}
-                            onChange={(e) => setSurgeonDraftByClinic((prev) => ({ ...prev, [clinic.id]: { name: e.target.value, specialization: prev[clinic.id]?.specialization || "" } }))}
+                            onChange={(e) => setSurgeonDraftByClinic((prev) => ({ ...prev, [clinic.id]: { ...(prev[clinic.id] || { specialization: "", userId: "" }), name: e.target.value } }))}
                           />
                           <input
                             className={cn(inputClass, "h-8 w-40")}
                             placeholder={tr("specialization")}
                             value={surgeonDraftByClinic[clinic.id]?.specialization || ""}
-                            onChange={(e) => setSurgeonDraftByClinic((prev) => ({ ...prev, [clinic.id]: { name: prev[clinic.id]?.name || "", specialization: e.target.value } }))}
+                            onChange={(e) => setSurgeonDraftByClinic((prev) => ({ ...prev, [clinic.id]: { ...(prev[clinic.id] || { name: "", userId: "" }), specialization: e.target.value } }))}
                           />
+                          {/* Optional: bind this listing to the vet's login account */}
+                          <select
+                            className={cn(inputClass, "h-8 w-48")}
+                            value={surgeonDraftByClinic[clinic.id]?.userId || ""}
+                            onChange={(e) => setSurgeonDraftByClinic((prev) => ({ ...prev, [clinic.id]: { ...(prev[clinic.id] || { name: "", specialization: "" }), userId: e.target.value } }))}
+                          >
+                            <option value="">{tr("noLinkedAccount")}</option>
+                            {veterinarians.filter((vet) => vet.status === "active").map((vet) => (
+                              <option key={vet.id} value={vet.id}>{vet.name} ({vet.email})</option>
+                            ))}
+                          </select>
                           <Button size="sm" variant="secondary" onClick={() => handleAddSurgeon(clinic)}>
                             <Plus className="h-3 w-3" />{tr("addSurgeonAction")}
                           </Button>
@@ -1315,55 +1358,6 @@ export function AdminDashboardPage() {
                       </label>
                     </div>
                   </div>
-                </div>
-
-                <div className={card}>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-[15px] font-semibold text-accent dark:text-white">{tr("aiModelPanelTitle")}</h3>
-                    <Badge variant={modelInfo?.condition_model_loaded ? "success" : "warning"}>
-                      {modelInfo?.condition_model_loaded ? tr("modelsLoaded") : tr("ruleFallback")}
-                    </Badge>
-                  </div>
-
-                  <div className="mt-3 grid gap-3 md:grid-cols-3">
-                    <div className="rounded-lg border border-border/60 p-3 text-[13px] dark:border-neutral-800">
-                      <p className="font-semibold text-accent dark:text-white">{tr("conditionModelTitle")}</p>
-                      <p className="mt-1 text-accent-subtle">
-                        {tr("accuracy")}: {modelInfo?.condition_metrics?.accuracy != null ? `${Math.round(modelInfo.condition_metrics.accuracy * 100)}%` : "—"}
-                        {" · "}F1: {modelInfo?.condition_metrics?.macro_f1 ?? "—"}
-                      </p>
-                      <p className="mt-1 text-[11px] text-accent-faint">{tr("conditionModelDetail")}</p>
-                    </div>
-                    <div className="rounded-lg border border-border/60 p-3 text-[13px] dark:border-neutral-800">
-                      <p className="font-semibold text-accent dark:text-white">{tr("riskModelTitle")}</p>
-                      <p className="mt-1 text-accent-subtle">
-                        ROC-AUC: {modelInfo?.risk_metrics?.roc_auc ?? "—"}{" · "}PR-AUC: {modelInfo?.risk_metrics?.pr_auc ?? "—"}
-                      </p>
-                      <p className="mt-1 text-[11px] text-accent-faint">{tr("riskModelDetail")}</p>
-                    </div>
-                    <div className="rounded-lg border border-border/60 p-3 text-[13px] dark:border-neutral-800">
-                      <p className="font-semibold text-accent dark:text-white">{tr("neo4jOntology")}</p>
-                      <p className="mt-1 text-accent-subtle">
-                        {ontologySummary?.available
-                          ? `${ontologySummary.diseases.length} ${tr("diseases").toLowerCase()} · ${ontologySummary.symptoms.length} ${tr("symptoms").toLowerCase()} · ${ontologySummary.vaccines.length}`
-                          : tr("neo4jUnavailable")}
-                      </p>
-                      <p className="mt-1 text-[11px] text-accent-faint">
-                        {ontologySummary?.available ? `${ontologySummary.indicates_count} INDICATES · ${ontologySummary.prevents_count} PREVENTS` : tr("startNeo4jHint")}
-                      </p>
-                    </div>
-                  </div>
-
-                  {ontologySummary?.available ? (
-                    <details className="mt-3 rounded-lg border border-border/60 p-3 text-[12px] dark:border-neutral-800">
-                      <summary className="cursor-pointer font-medium text-accent dark:text-white">{tr("diseases")} / {tr("symptoms")} / {tr("vaccinesPreventives")}</summary>
-                      <div className="mt-2 grid gap-3 md:grid-cols-3 text-accent-subtle">
-                        <p>{ontologySummary.diseases.join(", ")}</p>
-                        <p>{ontologySummary.symptoms.join(", ")}</p>
-                        <p>{ontologySummary.vaccines.join(", ")}</p>
-                      </div>
-                    </details>
-                  ) : null}
                 </div>
 
                 <div className={card}>

@@ -13,6 +13,14 @@ type RegisterBody = {
   phoneNumber?: string;
   role?: UiRole;
   mustChangePassword?: boolean;
+  // Optional veterinarian profile fields supplied by admin provisioning.
+  doctorRegistrationNumber?: string;
+  age?: string;
+  gender?: string;
+  dateOfBirth?: string;
+  specialization?: string;
+  address?: string;
+  photoURL?: string;
 };
 
 type LoginBody = {
@@ -119,6 +127,14 @@ export async function register(body: RegisterBody, callerToken?: string) {
     phoneNumber: body.phoneNumber,
     role,
     mustChangePassword: Boolean(body.mustChangePassword),
+    doctorRegistrationNumber: body.doctorRegistrationNumber,
+    age: body.age,
+    gender: body.gender,
+    dateOfBirth: body.dateOfBirth,
+    specialization: body.specialization,
+    address: body.address,
+    photoURL: body.photoURL,
+    status: "active",
   });
 
   const token = jwt.sign({ uid: user._id, role }, JWT_SECRET, { expiresIn: JWT_EXPIRY });

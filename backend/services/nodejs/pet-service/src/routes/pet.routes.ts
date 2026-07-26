@@ -17,6 +17,33 @@ function isOwnerRole(req: Request): boolean {
   return identity(req)?.role === "owner";
 }
 
+const CLINIC_SERVICE_URL = process.env.CLINIC_SERVICE_URL || "http://localhost:4003";
+const SERVICE_KEY = process.env.SERVICE_KEY || "internal-dev-key";
+
+/**
+ * Pet ids a veterinarian is currently allowed to see.
+ *
+ * Access is relationship-based: clinic-service holds the grants, created when
+ * the owner books this vet or explicitly shares the pet. Returns [] when the
+ * registry cannot be reached — failing closed is the only safe default for an
+ * authorization check, so a clinic-service outage hides records rather than
+ * exposing every pet on the platform.
+ */
+async function grantedPetIds(vetUserId: string): Promise<string[]> {
+  try {
+    const response = await fetch(
+      `${CLINIC_SERVICE_URL}/api/access-grants?vetUserId=${encodeURIComponent(vetUserId)}`,
+      { headers: { "x-service-key": SERVICE_KEY } },
+    );
+    if (!response.ok) return [];
+    const body = await response.json() as { data?: Array<{ petId: string; active: boolean }> };
+    return (body.data ?? []).filter((grant) => grant.active).map((grant) => grant.petId);
+  } catch (err) {
+    console.warn("[pet-service] access-grant lookup failed; denying vet access", err);
+    return [];
+  }
+}
+
 function mapPet(pet: any) {
   return {
     id: pet._id.toString(),
@@ -48,7 +75,14 @@ petRouter.get("/", async (req, res, next) => {
     if (user?.role === "owner") {
       ownerId = user.uid;
     }
-    const filter = ownerId ? { ownerId: String(ownerId) } : {};
+    const filter: Record<string, unknown> = ownerId ? { ownerId: String(ownerId) } : {};
+
+    // A vet sees only pets they hold an active grant for — established by an
+    // appointment with them, or shared explicitly by the owner. Previously this
+    // returned every pet on the platform.
+    if (user?.role === "vet") {
+      filter._id = { $in: await grantedPetIds(user.uid) };
+    }
     const total = await PetModel.countDocuments(filter);
     const pets  = await PetModel.find(filter)
       .skip((Number(page) - 1) * Number(pageSize))
@@ -63,8 +97,17 @@ petRouter.get("/:id", async (req, res, next) => {
   try {
     const pet = await PetModel.findById(req.params.id).lean();
     if (!pet) return res.status(404).json({ success: false, message: "Pet not found" });
-    if (isOwnerRole(req) && pet.ownerId !== identity(req)?.uid) {
+    const user = identity(req);
+    if (isOwnerRole(req) && pet.ownerId !== user?.uid) {
       return res.status(403).json({ success: false, message: "You can only access your own pets" });
+    }
+    // Same rule as the list: without this, filtering the list would be
+    // cosmetic — any vet could still fetch any pet by id.
+    if (user?.role === "vet") {
+      const allowed = await grantedPetIds(user.uid);
+      if (!allowed.includes(String(pet._id))) {
+        return res.status(403).json({ success: false, message: "No active access grant for this pet" });
+      }
     }
     res.json({ success: true, data: mapPet(pet) });
   } catch (err) { next(err); }

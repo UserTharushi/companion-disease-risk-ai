@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, Calendar, Camera, Check, Mail, MapPin, Phone, Share2, Stethoscope, Upload } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -12,6 +12,14 @@ import { createAppointment, listClinics } from "../lib/clinic-api";
 import { submitPrediction, getPrediction, submitPredictionFeedback, type PredictionResult } from "../lib/prediction-api";
 import { analyzeCase, getRecommendations, type AgentResponse } from "../lib/agent-api";
 import { createVaccination, listVaccinations, type VaccinationRecord } from "../lib/vaccination-api";
+import {
+  listAccessGrants,
+  listVetDirectory,
+  revokeAccessGrant,
+  shareWithVet,
+  type AccessGrant,
+  type VetDirectoryEntry,
+} from "../lib/access-api";
 import { toast } from "../lib/use-toast";
 import { Disclaimer } from "../components/Disclaimer";
 import petBuddyImage from "../assets/images/pet-buddy.jpg";
@@ -265,6 +273,15 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
   const [newVaccine, setNewVaccine] = useState({ vaccineName: "", administeredAt: "", nextDueAt: "" });
   const [savingVaccine, setSavingVaccine] = useState(false);
 
+  const pickLang = (en: string, si: string, ta: string) =>
+    (language === "si" ? si : language === "ta" ? ta : en);
+
+  // Who can see this pet's health records, and why.
+  const [grants, setGrants] = useState<AccessGrant[]>([]);
+  const [vetDirectory, setVetDirectory] = useState<VetDirectoryEntry[]>([]);
+  const [shareVetId, setShareVetId] = useState("");
+  const [sharingBusy, setSharingBusy] = useState(false);
+
   const currentPetId = pet?.id ?? "";
   useEffect(() => {
     if (!currentPetId) return;
@@ -274,6 +291,44 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
       .catch(() => undefined);
     return () => { active = false; };
   }, [currentPetId]);
+
+  const refreshGrants = useCallback(async () => {
+    if (!currentPetId) return;
+    const [rows, directory] = await Promise.all([
+      listAccessGrants(currentPetId).catch(() => [] as AccessGrant[]),
+      listVetDirectory().catch(() => [] as VetDirectoryEntry[]),
+    ]);
+    setGrants(rows.filter((grant) => grant.active));
+    setVetDirectory(directory);
+  }, [currentPetId]);
+
+  useEffect(() => { void refreshGrants(); }, [refreshGrants]);
+
+  const vetName = (vetUserId: string) =>
+    vetDirectory.find((vet) => vet.id === vetUserId)?.name || vetUserId;
+
+  async function handleShare() {
+    if (!shareVetId || !currentPetId) return;
+    setSharingBusy(true);
+    try {
+      await shareWithVet(currentPetId, shareVetId);
+      setShareVetId("");
+      await refreshGrants();
+    } catch (err) {
+      toast({ title: (err as Error).message || "Could not share", variant: "error" });
+    } finally {
+      setSharingBusy(false);
+    }
+  }
+
+  async function handleRevoke(grantId: string) {
+    try {
+      await revokeAccessGrant(grantId);
+      await refreshGrants();
+    } catch (err) {
+      toast({ title: (err as Error).message || "Could not revoke", variant: "error" });
+    }
+  }
 
   if (!pet) {
     return (
@@ -367,6 +422,70 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
           <span className="rounded-full bg-info-light px-3 py-1 text-sm font-semibold text-primary">{pet.weightKg} lbs</span>
           <span className="rounded-full bg-surface-tertiary px-3 py-1 text-sm font-semibold text-accent-muted dark:bg-neutral-800">{pet.species}</span>
+        </div>
+      </section>
+
+      {/* Owner-controlled sharing. Appointment-based grants are shown but not
+          revocable here — they belong to a booking, so they are managed by
+          cancelling it rather than by toggling consent. */}
+      <section className={cardClassP5}>
+        <h3 className="text-[15px] font-semibold text-accent">
+          {pickLang("Who can see these records", "මෙම වාර්තා දැකිය හැක්කේ කාටද", "இந்தப் பதிவுகளை யார் பார்க்கலாம்")}
+        </h3>
+        <p className="mt-1 text-xs text-accent-faint">
+          {pickLang(
+            "A veterinarian can only see this pet's health records while you have shared them, or while they have an appointment with you.",
+            "ඔබ බෙදාගෙන ඇති විට හෝ ඔවුන්ට ඔබ සමඟ හමුවීමක් ඇති විට පමණක් පශු වෛද්‍යවරයෙකුට මෙම සුරතලාගේ සෞඛ්‍ය වාර්තා දැකිය හැක.",
+            "நீங்கள் பகிர்ந்திருக்கும் போது அல்லது உங்களுடன் சந்திப்பு இருக்கும் போது மட்டுமே ஒரு கால்நடை மருத்துவர் இந்தப் பதிவுகளைப் பார்க்க முடியும்.",
+          )}
+        </p>
+
+        <div className="mt-3 space-y-2">
+          {grants.length === 0 ? (
+            <p className="text-sm text-accent-faint">
+              {pickLang("Not shared with anyone.", "කිසිවෙකු සමඟ බෙදාගෙන නැත.", "யாருடனும் பகிரப்படவில்லை.")}
+            </p>
+          ) : (
+            grants.map((grant) => (
+              <div key={grant.id} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 dark:border-neutral-800">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-accent">{vetName(grant.vetUserId)}</p>
+                  <p className="text-[11px] text-accent-subtle">
+                    {grant.source === "appointment"
+                      ? pickLang("via appointment", "හමුවීම හරහා", "சந்திப்பு வழியாக")
+                      : pickLang("shared by you", "ඔබ විසින් බෙදාගත්", "நீங்கள் பகிர்ந்தது")}
+                  </p>
+                </div>
+                {grant.source === "owner_consent" ? (
+                  <Button size="sm" variant="secondary" onClick={() => handleRevoke(grant.id)}>
+                    {pickLang("Revoke", "අවලංගු කරන්න", "நீக்கு")}
+                  </Button>
+                ) : (
+                  <Badge variant="info">{pickLang("Appointment", "හමුවීම", "சந்திப்பு")}</Badge>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <select
+            className="h-9 min-w-[200px] rounded-lg border border-border bg-surface px-2 text-sm text-accent dark:border-neutral-700 dark:bg-neutral-900"
+            value={shareVetId}
+            onChange={(e) => setShareVetId(e.target.value)}
+          >
+            <option value="">{pickLang("Select a veterinarian…", "පශු වෛද්‍යවරයෙකු තෝරන්න…", "கால்நடை மருத்துவரைத் தேர்ந்தெடுக்கவும்…")}</option>
+            {vetDirectory
+              .filter((vet) => !grants.some((grant) => grant.vetUserId === vet.id))
+              .map((vet) => (
+                <option key={vet.id} value={vet.id}>
+                  {vet.name}{vet.specialization ? ` — ${vet.specialization}` : ""}
+                </option>
+              ))}
+          </select>
+          <Button size="sm" onClick={handleShare} disabled={!shareVetId || sharingBusy}>
+            {pickLang("Share", "බෙදාගන්න", "பகிர்")}
+          </Button>
         </div>
       </section>
 
@@ -1189,6 +1308,58 @@ export function PredictionResultPage() {
     return resolved.en;
   }
 
+  function pickLang(en: string, si: string, ta: string) {
+    return language === "si" ? si : language === "ta" ? ta : en;
+  }
+
+  // The model reasons over a rendered sentence, so its raw terms are n-grams
+  // ("less water", "has"). ai-service now tags each one with the form control
+  // it came from; turn that back into the wording the owner actually chose.
+  function getFactorLabel(f: { feature: string; field?: string | null; value?: string | null }) {
+    const field = f.field || "";
+    const value = f.value || "";
+
+    if (field === "symptom") return getSymptomLabel(value);
+    if (field === "breed") return value;
+    if (field === "notes") return pickLang("Your notes", "ඔබගේ සටහන්", "உங்கள் குறிப்புகள்");
+    if (field === "duration") {
+      return pickLang(`Reported for ${value} days`, `දින ${value}ක් තිස්සේ`, `${value} நாட்களாக`);
+    }
+    if (field === "body_condition") {
+      return value === "underweight"
+        ? pickLang("Body condition: underweight", "ශරීර තත්ත්වය: අඩු බර", "உடல் நிலை: குறைந்த எடை")
+        : pickLang("Body condition: overweight", "ශරීර තත්ත්වය: අධික බර", "உடல் நிலை: அதிக எடை");
+    }
+    // "Appetite: none" would read as "no appetite problem" — say what it means.
+    if (field === "appetite" && value === "none") {
+      return pickLang("Appetite: refusing food", "ආහාර රුචිය: කෑම ප්‍රතික්ෂේප කරයි", "பசி: உணவை மறுக்கிறது");
+    }
+
+    const fields: Record<string, [string, string, string]> = {
+      appetite: ["Appetite", "ආහාර රුචිය", "பசி"],
+      water_intake: ["Water intake", "ජල පානය", "நீர் அருந்துதல்"],
+      activity: ["Activity", "ක්‍රියාකාරීත්වය", "செயல்பாடு"],
+      urination: ["Urination", "මුත්‍රා කිරීම", "சிறுநீர் கழித்தல்"],
+      vomiting: ["Vomiting", "වමනය", "வாந்தி"],
+      diarrhea: ["Diarrhoea", "පාචනය", "வயிற்றுப்போக்கு"],
+    };
+    const values: Record<string, [string, string, string]> = {
+      reduced: ["reduced", "අඩුයි", "குறைவு"],
+      increased: ["increased", "වැඩියි", "அதிகம்"],
+      lethargic: ["lethargic", "අලසයි", "சோர்வு"],
+      once: ["once", "වරක්", "ஒருமுறை"],
+      multiple: ["multiple times", "කිහිප වතාවක්", "பலமுறை"],
+      persistent: ["persistent", "අඛණ්ඩව", "தொடர்ச்சியாக"],
+      mild: ["mild", "සුළු", "இலகு"],
+      severe: ["severe", "දැඩි", "கடுமை"],
+    };
+
+    const fieldName = fields[field];
+    if (!fieldName) return f.feature;
+    const valueName = values[value];
+    return `${pickLang(...fieldName)}: ${valueName ? pickLang(...valueName) : value}`;
+  }
+
   const localizedSymptoms = (data?.symptoms ?? []).map((symptom) => getSymptomLabel(symptom));
   const vitalsScore =
     (data?.vitals ? severityScore[normalizeSeverity(data.vitals.activityLevel)] : 0) +
@@ -1209,10 +1380,14 @@ export function PredictionResultPage() {
     : riskLevel === "MODERATE RISK"
       ? (language === "si" ? "මධ්‍යම අවදානම" : language === "ta" ? "நடுத்தர அபாயம்" : "Moderate Risk")
       : (language === "si" ? "අඩු අවදානම" : language === "ta" ? "குறைந்த அபாயம்" : "Low Risk");
-  const confidence = result
-    ? Math.round(result.confidence_score * 100)
-    : riskLevel === "HIGH RISK" ? 88 : riskLevel === "MODERATE RISK" ? 74 : 62;
-  const topFeatures = result?.top_features ?? [];
+  // No model result means no confidence. The old 88/74/62 fallback invented a
+  // number for the offline heuristic, and it travelled into the shared report
+  // text where the on-screen "offline estimate" banner could not follow it.
+  const confidence = result ? Math.round(result.confidence_score * 100) : null;
+  // Only show factors we can name as a form answer. Anything without `field` is
+  // a raw model n-gram from an old stored prediction ("less", "water is") —
+  // meaningless to an owner, so drop it rather than render a fragment.
+  const topFeatures = (result?.top_features ?? []).filter((f) => Boolean(f.field));
   const maxFeatureWeight = Math.max(...topFeatures.map((f) => Math.abs(f.weight)), 0.0001);
   const topDisease = result?.predicted_diseases?.[0]?.disease_localized || result?.predicted_diseases?.[0]?.disease;
   const finding = topDisease
@@ -1245,7 +1420,18 @@ export function PredictionResultPage() {
       ? (language === "si" ? "රෝග ලක්ෂණ දිගටම පවතින්නේ නම් පැය 24ක් ඇතුළත වෙට් පරීක්ෂාවක් වෙන් කරන්න." : language === "ta" ? "அறிகுறிகள் தொடர்ந்தால் 24 மணிநேரத்திற்குள் வெட் பரிசோதனை செய்யவும்." : "Schedule a veterinary check within 24 hours if symptoms persist.")
       : (language === "si" ? "නිවසේ නිරීක්ෂණය ප්‍රමාණවත්ය. රෝග ලක්ෂණ වැඩි වුවහොත් වෙට්වරයෙකු වෙත යන්න." : language === "ta" ? "வீட்டில் கண்காணிப்பு போதுமானது. அறிகுறிகள் மோசமானால் வெட்டை பார்க்கவும்." : "Home monitoring is acceptable. Visit a vet if symptoms worsen.");
 
-  const reportText = `${language === "si" ? "සුරතලා" : language === "ta" ? "செல்லப்பிராணி" : "Pet"}: ${pet.name}\n${language === "si" ? "රෝග රටාව" : language === "ta" ? "நோய் முறை" : "Disease Pattern"}: ${finding}\n${language === "si" ? "අවදානම" : language === "ta" ? "அபாயம்" : "Risk"}: ${riskLevel}\n${language === "si" ? "අවදානම් ලකුණු" : language === "ta" ? "அபாய மதிப்பு" : "Risk Score"}: ${riskScore}/100\n${language === "si" ? "විශ්වාසය" : language === "ta" ? "நம்பகத்தன்மை" : "Confidence"}: ${confidence}%\n${language === "si" ? "රෝග ලක්ෂණ" : language === "ta" ? "அறிகுறிகள்" : "Symptoms"}: ${localizedSymptoms.join(", ")}\n${language === "si" ? "වෙට් උපදෙස්" : language === "ta" ? "வெட் ஆலோசனை" : "Vet Advice"}: ${vetAdvice}\n${language === "si" ? "සටහන්" : language === "ta" ? "குறிப்புகள்" : "Notes"}: ${data?.notes ?? "N/A"}`;
+  // Confidence is omitted entirely when there is no model result, and an
+  // offline estimate says so in the exported text itself.
+  const confidenceLine = confidence === null
+    ? ""
+    : `${pickLang("Confidence", "විශ්වාසය", "நம்பகத்தன்மை")}: ${confidence}%\n`;
+  const offlineLine = data?.offline
+    ? `${pickLang("Note: the AI service was unreachable — this is an offline estimate, not a model prediction.", "සටහන: AI සේවාව ළඟා විය නොහැකි විය — මෙය දේශීය ඇස්තමේන්තුවකි, ආකෘති පුරෝකථනයක් නොවේ.", "குறிப்பு: AI சேவையை அணுக முடியவில்லை — இது உள்ளூர் மதிப்பீடு, மாதிரிக் கணிப்பு அல்ல.")}\n`
+    : "";
+  const symptomsLine = localizedSymptoms.length
+    ? localizedSymptoms.join(", ")
+    : pickLang("none selected (vital signs only)", "තෝරා නැත (ලක්ෂණ පමණි)", "தேர்ந்தெடுக்கப்படவில்லை (உயிர் அறிகுறிகள் மட்டும்)");
+  const reportText = `${language === "si" ? "සුරතලා" : language === "ta" ? "செல்லப்பிராணி" : "Pet"}: ${pet.name}\n${language === "si" ? "රෝග රටාව" : language === "ta" ? "நோய் முறை" : "Disease Pattern"}: ${finding}\n${language === "si" ? "අවදානම" : language === "ta" ? "அபாயம்" : "Risk"}: ${riskLevel}\n${language === "si" ? "අවදානම් ලකුණු" : language === "ta" ? "அபாய மதிப்பு" : "Risk Score"}: ${riskScore}/100\n${confidenceLine}${offlineLine}${language === "si" ? "රෝග ලක්ෂණ" : language === "ta" ? "அறிகுறிகள்" : "Symptoms"}: ${symptomsLine}\n${language === "si" ? "වෙට් උපදෙස්" : language === "ta" ? "வெட் ஆலோசனை" : "Vet Advice"}: ${vetAdvice}\n${language === "si" ? "සටහන්" : language === "ta" ? "குறிப்புகள்" : "Notes"}: ${data?.notes ?? "N/A"}`;
 
   async function shareReport() {
     if (navigator.share) {
@@ -1313,49 +1499,82 @@ export function PredictionResultPage() {
         </section>
       ) : null}
 
+      {/* Reference lookup, not a statement about this pet — so it is collapsed by
+          default and phrased as sentences. A bare "80%" badge beside a disease
+          name read as "80% chance your pet has this", which it never meant. */}
       {result?.ontology_links?.length ? (
         <section className={cardClassP5}>
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-accent">{language === "si" ? "AI තර්කනය — රෝග ලක්ෂණ සම්බන්ධතා" : language === "ta" ? "AI காரணம் — அறிகுறி இணைப்புகள்" : "Why — Symptom-Disease Links"}</h3>
-          <ul className="mt-3 space-y-2 text-sm text-accent-subtle">
-            {result.ontology_links.slice(0, 5).map((link) => (
-              <li key={`${link.symptom}-${link.disease}`} className="flex items-center justify-between gap-2">
-                <span><span className="font-medium text-accent">{link.symptom_localized || link.symptom}</span> → {link.disease_localized || link.disease}</span>
-                <Badge variant="info">{Math.round(link.weight * 100)}%</Badge>
-              </li>
-            ))}
-          </ul>
+          <details>
+            <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-accent">{pickLang("What these symptoms can point to", "මෙම රෝග ලක්ෂණ පෙන්නුම් කළ හැකි දේ", "இந்த அறிகுறிகள் எதைக் குறிக்கலாம்")}</summary>
+            <p className="mt-2 text-xs text-accent-faint">{pickLang("General facts from our veterinary reference — the same for any pet with these symptoms. This is background reading, not a result for your pet.", "අපගේ පශු වෛද්‍ය යොමුවෙන් සාමාන්‍ය කරුණු — මෙම රෝග ලක්ෂණ ඇති ඕනෑම සතෙකුට එකම වේ. මෙය පසුබිම් තොරතුරු මිස ඔබේ සුරතලාගේ ප්‍රතිඵලයක් නොවේ.", "எமது கால்நடை மருத்துவக் குறிப்பிலிருந்து பொதுவான தகவல்கள் — இந்த அறிகுறிகள் உள்ள எந்தச் செல்லப்பிராணிக்கும் ஒரே மாதிரி. இது பின்னணித் தகவலே, உங்கள் செல்லப்பிராணியின் முடிவு அல்ல.")}</p>
+            <ul className="mt-3 space-y-2 text-sm text-accent-subtle">
+              {result.ontology_links.slice(0, 5).map((link) => {
+                const symptom = link.symptom_localized || link.symptom;
+                const disease = link.disease_localized || link.disease;
+                const strength = link.weight >= 0.75
+                  ? pickLang("Common sign", "සුලභ ලක්ෂණයකි", "பொதுவான அறிகுறி")
+                  : link.weight >= 0.55
+                    ? pickLang("Sometimes a sign", "සමහර විට ලක්ෂණයකි", "சில வேளை அறிகுறி")
+                    : pickLang("Occasionally a sign", "කලාතුරකින් ලක්ෂණයකි", "அரிதாக அறிகுறி");
+                return (
+                  <li key={`${link.symptom}-${link.disease}`} className="flex items-center justify-between gap-2">
+                    <span>{pickLang(`${symptom} can be a sign of `, `${symptom} යනු `, `${symptom} `)}<span className="font-medium text-accent">{disease}</span>{pickLang("", " හි ලක්ෂණයක් විය හැක", " இன் அறிகுறியாக இருக்கலாம்")}</span>
+                    <Badge variant="info">{strength}</Badge>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
         </section>
       ) : null}
 
       {topFeatures.length ? (
         <section className={cardClassP5}>
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-accent">{language === "si" ? "ප්‍රධාන බලපෑම් සාධක" : language === "ta" ? "முக்கிய தாக்க காரணிகள்" : "Key Influencing Factors"}</h3>
-          <p className="mt-1 text-xs text-accent-faint">{language === "si" ? "ඉහළම පුරෝකථනයට වඩාත් බලපෑ ඔබගේ වාර්තාවේ යෙදුම්. කොළ පැහැය එය තහවුරු කරයි; අළු පැහැය එයට එරෙහිව බර තබයි." : language === "ta" ? "மேல் கணிப்பை மிகவும் பாதித்த உங்கள் அறிக்கையின் சொற்கள். பச்சை அதை ஆதரிக்கிறது; சாம்பல் அதற்கு எதிராக உள்ளது." : "Terms from your report that most influenced the top prediction. Green supports it; grey weighs against it."}</p>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-accent">{pickLang("What led to this result", "මෙම ප්‍රතිඵලයට හේතු වූ දේ", "இந்த முடிவுக்கு வழிவகுத்தவை")}</h3>
+          <p className="mt-1 text-xs text-accent-faint">{pickLang("The answers you gave that mattered most. A longer bar means it mattered more.", "ඔබ දුන් පිළිතුරු අතරින් වඩාත්ම වැදගත් වූ ඒවා. දිගු තීරුවක් යනු එය වඩාත් වැදගත් වූ බවයි.", "நீங்கள் அளித்த பதில்களில் மிக முக்கியமானவை. நீளமான பட்டை என்பது அது அதிகம் பாதித்தது என்பதாகும்.")}</p>
           <div className="mt-3 space-y-3">
-            {topFeatures.map((f) => (
-              <div key={f.feature}>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-accent">{f.feature}</span>
-                  <span className={f.weight >= 0 ? "text-success-fg" : "text-accent-subtle"}>{f.weight >= 0 ? "+" : "−"}{Math.abs(f.weight).toFixed(2)}</span>
+            {topFeatures.map((f, index) => {
+              // Bar length carries the magnitude; the raw value is a log-odds
+              // contribution, so printing it invited reading "+0.25" as a
+              // probability. Kept in `title` for the demo / thesis walkthrough.
+              const share = Math.round((Math.abs(f.weight) / maxFeatureWeight) * 100);
+              const tag = index === 0
+                ? pickLang("Biggest reason", "ප්‍රධානතම හේතුව", "முக்கியக் காரணம்")
+                : f.weight >= 0
+                  ? pickLang("Also mattered", "මෙයද වැදගත් විය", "இதுவும் முக்கியம்")
+                  : pickLang("Points the other way", "විරුද්ධ දෙසට යොමු කරයි", "எதிர்த் திசையில்");
+              return (
+                <div key={`${f.field ?? ""}:${f.value ?? ""}:${f.feature}`} title={`${f.weight >= 0 ? "+" : "−"}${Math.abs(f.weight).toFixed(3)}`}>
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span className="font-medium text-accent">{getFactorLabel(f)}</span>
+                    <span className={`shrink-0 text-xs ${f.weight >= 0 ? "text-success-fg" : "text-accent-subtle"}`}>{tag}</span>
+                  </div>
+                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-tertiary dark:bg-neutral-800">
+                    <div
+                      className={`h-full rounded-full ${f.weight >= 0 ? "bg-success-fg" : "bg-neutral-400 dark:bg-neutral-500"}`}
+                      style={{ width: `${share}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-tertiary dark:bg-neutral-800">
-                  <div
-                    className={`h-full rounded-full ${f.weight >= 0 ? "bg-success-fg" : "bg-neutral-400 dark:bg-neutral-500"}`}
-                    style={{ width: `${Math.round((Math.abs(f.weight) / maxFeatureWeight) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       ) : null}
 
       <section className={cardClassP5}>
         <h3 className="text-sm font-semibold uppercase tracking-wide text-accent">{language === "si" ? "විශ්ලේෂණය කළ රෝග ලක්ෂණ" : language === "ta" ? "பகுப்பாய்வு செய்யப்பட்ட அறிகுறிகள்" : "Analyzed Symptoms"}</h3>
+        {/* Never invent symptoms here. This used to fall back to a fixed
+            "Stiff gait / Reduced activity / Climbing difficulty" list, which
+            showed clinical input the owner never reported. */}
         <div className="mt-3 flex flex-wrap gap-2">
-          {(localizedSymptoms.length ? localizedSymptoms : [language === "si" ? "ඇවිදීමේ අපහසුතාව" : language === "ta" ? "நடையின் தடை" : "Stiff gait", language === "si" ? "ක්‍රියාකාරීත්වය අඩුවීම" : language === "ta" ? "செயல்பாடு குறைவு" : "Reduced activity", language === "si" ? "පඩිපෙළ නැගීමේ අපහසුතාව" : language === "ta" ? "படிக்கட்டில் ஏறுவதில் சிரமம்" : "Climbing difficulty"]).map((symptom) => (
-            <span key={symptom} className="rounded-full border border-border px-3 py-1 text-sm text-accent dark:border-neutral-700 dark:bg-neutral-950">{symptom}</span>
-          ))}
+          {localizedSymptoms.length ? (
+            localizedSymptoms.map((symptom) => (
+              <span key={symptom} className="rounded-full border border-border px-3 py-1 text-sm text-accent dark:border-neutral-700 dark:bg-neutral-950">{symptom}</span>
+            ))
+          ) : (
+            <p className="text-sm text-accent-faint">{pickLang("No symptoms were ticked — this assessment used the vital signs you reported.", "රෝග ලක්ෂණ තෝරා නොමැත — මෙම තක්සේරුව ඔබ වාර්තා කළ ලක්ෂණ භාවිතා කළේය.", "அறிகுறிகள் எதுவும் தேர்ந்தெடுக்கப்படவில்லை — இந்த மதிப்பீடு நீங்கள் தெரிவித்த உயிர் அறிகுறிகளைப் பயன்படுத்தியது.")}</p>
+          )}
         </div>
       </section>
 

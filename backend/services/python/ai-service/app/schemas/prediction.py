@@ -52,8 +52,14 @@ class OntologyLink(BaseModel):
 
 
 class TopFeature(BaseModel):
+    # `feature` stays the raw model n-gram (back-compat for stored predictions
+    # and the expert-review tooling). `field`/`value` are the form control the
+    # n-gram came from — the frontend localizes those into a readable label and
+    # falls back to `feature` when they are absent.
     feature: str
     weight: float
+    field: Optional[str] = None
+    value: Optional[str] = None
 
 
 class PredictionResponse(BaseModel):
