@@ -1017,4 +1017,4 @@ The complete system can be reproduced with `docker compose up --build` from the 
 
 ## Appendix H — Ethical Approval Documents
 
-*To be attached following departmental ethical clearance (Activity A1).*
+*Departmental ethical approval documentation to be attached.* The survey instrument carries an explicit consent statement recorded against every response (Appendix A.1, item 1), and all 31 respondents recorded consent. The ethical framework governing the study is set out in Section 3.8.
