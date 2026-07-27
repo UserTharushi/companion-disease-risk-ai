@@ -67,3 +67,6 @@ model_artifacts/
 
 # Vite config temp files
 *.timestamp-*.mjs
+
+# Interim report build artefact (regenerate with scripts/build_interim_docx.py)
+docs/INTERIM_REPORT.build.md
