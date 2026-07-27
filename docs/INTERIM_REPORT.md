@@ -117,7 +117,8 @@
 | Table 11 | Challenges and Solutions | 4.5 |
 | Table 12 | Remaining Activities | 5.1 |
 | Table 13 | Risk Management Plan | 5.4 |
-| Table 14 | Preliminary Survey Response Summary | 4.2.7 |
+| Table 14 | Respondent and Animal Characteristics | 4.2.7 |
+| Table 15 | Distribution of Owner-Reported Health Indicators | 4.2.7 |
 
 ### List of Abbreviations
 
@@ -662,30 +663,90 @@ Access control was verified through an explicit test matrix confirming that an u
 
 ### 4.2.7 Preliminary Survey Findings
 
-The owner survey described in Section 3.4 is open and has returned **31 valid responses** to date. Analysis at this stage is descriptive and preliminary; the sample is below the 100–150 target and no inferential claims are drawn from it.
+The owner survey described in Section 3.4 has returned **31 valid responses**, all with recorded informed consent. Collection remains open. Analysis at this stage is descriptive; the sample is below the 100–150 target and no inferential claims are drawn from it. The raw response set is retained at `docs/survey/survey_responses.csv`.
 
-**Table 14 — Preliminary Survey Response Summary**
+**Table 14 — Respondent and Animal Characteristics (n = 31)**
 
-| Item | Value |
-|---|---|
-| Valid responses received | 31 |
-| Target sample size | 100–150 |
-| Collection status | Open — continuing |
-| Species distribution (dog / cat / both) | `[to be completed from response data]` |
-| Most frequently reported observable change | `[to be completed]` |
-| Proportion reporting a delay of ≥ 3 days before consulting a veterinarian | `[to be completed]` |
-| Proportion aware of their pet's next vaccination due date | `[to be completed]` |
-| Proportion currently using any pet health application | `[to be completed]` |
-| Preferred interface language (EN / SI / TA) | `[to be completed]` |
+| Attribute | Category | n | % |
+|---|---|---|---|
+| **Species** | Dog | 22 | 71.0 |
+| | Cat | 9 | 29.0 |
+| **Sex** | Male | 18 | 58.1 |
+| | Female | 13 | 41.9 |
+| **Age band** | Under 1 year | 1 | 3.3 |
+| | 1–3 years | 10 | 33.3 |
+| | 4–7 years | 16 | 53.3 |
+| | 8 years and over | 3 | 10.0 |
+| **Consent** | Given | 31 | 100.0 |
 
-> **Placeholders above are deliberate.** The response figures have not been transcribed into this report, and no values have been estimated or inferred. They will be completed directly from the response data before final submission.
+Age was reported as free text and parsed for 30 of 31 responses (mean 4.11 years, median 4.0, range 0.7–10.0). One respondent recorded *"No idea, he was old when I adopted him from nowhere"* — a rescue animal of unknown age. This is a meaningful design signal rather than a nuisance value: the system must accept an unknown age without blocking assessment, since a non-trivial proportion of Sri Lankan companion animals are adopted strays.
 
-**Purpose of the survey within the research design.** It is worth stating precisely what this survey does and does not contribute, since its role is easily misread:
+**Table 15 — Distribution of Owner-Reported Health Indicators (n = 31)**
 
-1. **Face validation of the symptom vocabulary (primary purpose).** The system asks owners about appetite, water intake, urination frequency, activity level, vomiting, and diarrhoea. The survey tests whether these are attributes owners can actually observe and report with confidence — a prerequisite for the entire input design. This purpose is well served even by a modest sample.
-2. **Characterisation of health-seeking delay.** Quantifying how long owners typically wait between noticing a change and consulting a veterinarian provides direct empirical support for the problem statement in Section 1.2.
-3. **Language and adoption preferences.** Informs the trilingual interface priority and identifies adoption barriers.
-4. **What it does *not* do.** The survey is **not** a training data source for the machine learning models. Owner-reported symptom sets are not accompanied by veterinary-confirmed labels, so they cannot supervise a classifier. Model training rests on the datasets in Table 3, and the route to label-bearing real-world data is the feedback loop in Section 4.1.5, not the survey.
+| Indicator | Response | n | % |
+|---|---|---|---|
+| **Appetite** | Normal | 21 | 67.7 |
+| | Slightly reduced | 10 | 32.3 |
+| **Water intake** | Normal | 20 | 64.5 |
+| | Increased | 6 | 19.4 |
+| | Decreased | 5 | 16.1 |
+| **Activity level** | Normal | 17 | 54.8 |
+| | Slightly less active | 10 | 32.3 |
+| | Very low activity | 4 | 12.9 |
+| **Vomiting** | Occasional | 21 | 67.7 |
+| | No | 10 | 32.3 |
+| **Diarrhoea** *(item answered by 12 of 31)* | No | 7 | 22.6 |
+| | Occasional | 5 | 16.1 |
+| | Not answered | 19 | 61.3 |
+| **Veterinary diagnosis** | Not diagnosed / not sure | 24 | 77.4 |
+| | Chronic Kidney Disease | 4 | 12.9 |
+| | Cancer | 1 | 3.2 |
+| | Arthritis | 1 | 3.2 |
+| | Injection allergies | 1 | 3.2 |
+
+#### Findings
+
+**F1 — The symptom vocabulary is answerable.** Every respondent completed every core indicator (appetite, water intake, activity, vomiting) using the supplied categories, with no free-text clarification requested. This satisfies the survey's primary purpose: confirming that the attributes the system asks about are ones owners can observe and report. The vocabulary requires no revision.
+
+**F2 — Reported abnormality is high, and this must be interpreted with care.** Treating "Normal"/"No" as unremarkable, **26 of 31 respondents (83.9%) reported at least one abnormal indicator**, and 8 (25.8%) reported three or more. Two readings are possible and both carry consequences:
+
+- *Self-selection.* Owners with a currently unwell animal are more motivated to complete a pet-health survey. This is the more likely explanation and reinforces the sampling limitation stated in Section 3.5.
+- *Category sensitivity.* "Occasional" vomiting — reported by 67.7% — is common in clinically healthy cats and dogs, particularly in relation to grooming or diet. If owners read "Occasional" as encompassing entirely normal variation, the category may over-capture.
+
+The second reading has a direct design implication: an input vocabulary that labels benign variation as abnormal will bias the severity index upward and contribute to over-triage. This finding therefore corroborates, from an independent direction, the over-triage tendency already identified statistically in Model B (Section 4.2.2) and mitigated through prior correction.
+
+**F3 — Ranking of reported abnormalities.** Vomiting was the most frequently abnormal indicator (67.7%), followed by activity level (45.2%), water intake (35.5%), appetite (32.3%), and diarrhoea (16.1% of the full sample). The prominence of activity and appetite changes supports the emphasis these carry in the severity index.
+
+**F4 — Response range was narrower than the instrument allowed.** No respondent selected the most severe option for appetite ("significantly reduced") or for vomiting ("frequent"). Observed responses cluster in the normal-to-mild range. A sample containing no severe presentations cannot validate the system's behaviour at the high-risk end of its scale, which remains dependent on synthetic and expert evaluation.
+
+**F5 — The diagnosed subgroup is small but analytically instructive.** Seven respondents (22.6%) reported a veterinary-confirmed condition, four of them Chronic Kidney Disease. Examining owner-reported indicators against those diagnoses:
+
+| Species | Diagnosis | Abnormal indicators reported |
+|---|---|---|
+| Cat | Chronic Kidney Disease | 4 — appetite, water intake, activity, vomiting |
+| Dog | Chronic Kidney Disease | 4 — appetite, activity, vomiting, diarrhoea |
+| Dog | Chronic Kidney Disease | 5 — appetite, water intake, activity, vomiting, diarrhoea |
+| Dog | Chronic Kidney Disease | **0 — all indicators reported normal** |
+| Cat | Cancer | 4 — appetite, water intake, activity, vomiting |
+| Cat | Injection allergies | 3 — water intake, activity, vomiting |
+| Dog | Arthritis | 2 — activity, vomiting |
+
+Three of the four CKD cases presented multiple abnormal indicators, and the cat case showed increased water intake with very low activity — consistent with the polydipsia and lethargy characteristic of the condition, and with the `INDICATES` weights encoded in the ontology (Section 4.2.3).
+
+**The fourth CKD case reported every indicator as normal.** This single response is the most valuable observation in the dataset. It is a direct, real-world instance of the central limitation of owner-observable data: a confirmed chronic condition that presents no signal the owner can perceive. No amount of model refinement can detect what the input channel does not carry. This is precisely why the system is positioned as decision support rather than diagnosis, why the disclaimer requirement (NFR1) is non-negotiable, and why a "low risk" output must never be presented as reassurance that the animal is well. The final report will cite this case explicitly when discussing limitations.
+
+**F6 — Instrument defect identified.** The diarrhoea item was answered by only 12 of 31 respondents (38.7%). Inspection of response timestamps shows all 19 missing values occur in responses submitted before 10 January 2026 22:02, and every response after that point contains an answer. This indicates the item was added or made visible partway through collection rather than being skipped by respondents. Consequently, diarrhoea prevalence cannot be reported for the full sample and the 16.1% figure above is computed over the whole sample rather than over those who saw the question (5 of 12, or 41.7%, among respondents who were asked).
+
+#### Role of the survey within the research design
+
+It is worth stating precisely what this survey does and does not contribute, since its role is easily misread:
+
+1. **Face validation of the symptom vocabulary (primary purpose).** Achieved — see F1.
+2. **Empirical support for the problem statement.** Partially achieved. The 22.6% diagnosed rate and the CKD case with no observable signs support the premise that early disease is difficult for owners to detect. However, the deployed instrument does **not** ask how long owners waited before consulting a veterinarian, so health-seeking delay — a central claim in Section 1.2 — remains unquantified by primary data.
+3. **Language and adoption preferences.** Not captured. The deployed instrument omits the technology-use and language-preference sections described in the planned design, so the trilingual interface priority remains justified by context rather than by respondent data.
+4. **What it does *not* do.** The survey is **not** a training data source. Owner-reported symptom sets carry no veterinary-confirmed label for the majority of responses, and the seven that do are far too few to supervise an eleven-class classifier. Model training rests on the datasets in Table 3; the route to label-bearing real-world data is the feedback loop in Section 4.1.5.
+
+Points 2 and 3 identify a gap between the planned and deployed instruments. Extending the questionnaire with health-seeking delay, vaccination awareness, and language preference items is recorded as Activity A2b in Section 5.1, to be applied to the remaining collection.
 
 This distinction matters for the evaluation narrative: a larger survey improves the *justification* and *usability grounding* of the system, whereas improved *predictive validity* depends on expert review (Activity A4) and on accumulated veterinarian-confirmed diagnoses.
 
@@ -741,7 +802,8 @@ Two of these solutions constitute methodological contributions rather than mere 
 |---|---|---|---|
 | A1 | ~~Survey instrument design~~ — **complete** | Questionnaire designed and deployed; 31 responses received | Done |
 | A2 | **Continue survey collection** | Extend distribution to reach 100–150 responses; currently at 31. Widen channels: veterinary clinics, welfare organisations, university networks, pet-owner groups | High |
-| A3 | Survey analysis | Complete descriptive analysis; transcribe results into Table 14; validate symptom vocabulary and quantify health-seeking delay | High |
+| A2b | **Extend the questionnaire** | Add the health-seeking delay, vaccination awareness, and language preference items identified as missing in Section 4.2.7; repair the diarrhoea item so it is presented to all respondents | High |
+| A3 | Survey re-analysis | Re-run descriptive analysis on the enlarged sample; test whether the 83.9% abnormality rate persists or reflects early self-selection | High |
 | A4 | Expert veterinary review | Distribute the prepared review sample to 3–5 practising surgeons; analyse agreement | High |
 | A5 | Formal usability testing | Task-based evaluation with representative owners; System Usability Scale administration | High |
 | A6 | Model B dataset improvement | Source or construct a better-balanced danger dataset to address the imbalance limitation | Medium |
@@ -866,19 +928,42 @@ The project is on schedule, with the substantial engineering risk now retired an
 
 ## Appendix A — Survey Questionnaire
 
-*The instrument has been deployed and has returned 31 responses to date (Section 4.2.7). The administered questionnaire should be attached here in full before final submission.* Instrument structure:
+### A.1 Instrument as deployed
 
-**Section 1 — Participant and pet demographics:** species, breed, age, sex, weight range, number of pets owned.
+The following items were administered and produced the 31 responses analysed in Section 4.2.7. Raw responses are retained at `docs/survey/survey_responses.csv`.
 
-**Section 2 — Observable symptoms:** appetite level, water intake, urination frequency, activity level, vomiting frequency, diarrhoea, duration of observed changes.
+| # | Item | Response options |
+|---|---|---|
+| 1 | Consent — *"This survey is conducted for academic research purposes only. It does not provide medical diagnosis or veterinary advice. I voluntarily agree to participate."* | Yes, I agree |
+| 2 | Pet type | Dog / Cat |
+| 3 | Pet age | Free text |
+| 4 | Pet gender | Male / Female |
+| 5 | Compared to normal, how was your pet's appetite? | Normal / Slightly reduced / Significantly reduced |
+| 6 | Have you noticed any change in your pet's water consumption? | Normal / Increased / Decreased |
+| 7 | How would you describe your pet's activity level? | Normal / Slightly less active / Very low activity |
+| 8 | Has your pet experienced vomiting? | No / Occasional / Frequent |
+| 9 | Has your pet experienced diarrhoea? | No / Occasional / Frequent |
+| 10 | Has your pet been diagnosed by a qualified veterinarian with any of the following conditions? | Condition list / Not diagnosed / Not sure |
 
-**Section 3 — Preventive care:** vaccination status, awareness of due dates, reminder practices.
+**Known issues with the deployed instrument** (identified in Section 4.2.7 and addressed by Activity A2b):
 
-**Section 4 — Health-seeking behaviour:** typical delay between noticing a change and consulting a veterinarian; factors influencing the decision.
+- Item 9 (diarrhoea) was not presented to the first 19 respondents and is answered by only 12 of 31.
+- Item 3 (age) is free text, producing values such as *"1year and 6month old"* and *"No idea"* that require manual parsing. A structured age band with an explicit "unknown" option is preferable.
+- The instrument does not capture urination frequency, although this is a core system input and a primary indicator for kidney and metabolic conditions.
 
-**Section 5 — Technology use:** existing use of pet health applications; language preference; barriers to adoption.
+### A.2 Proposed additional items for continued collection
 
-**Section 6 — Consent:** purpose, voluntary participation, anonymity, withdrawal rights.
+To be added under Activity A2b:
+
+**Health-seeking behaviour:** typical delay between noticing a change and consulting a veterinarian; factors influencing that decision. *(Required to substantiate the delay claim in Section 1.2 with primary data.)*
+
+**Preventive care:** vaccination status; awareness of the next due date; current reminder practices.
+
+**Technology use:** existing use of any pet health application; barriers to adoption.
+
+**Language preference:** English / Sinhala / Tamil. *(Required to substantiate the trilingual design decision with respondent data.)*
+
+**Urination frequency:** normal / increased / reduced, to align the instrument with the system's actual input set.
 
 ## Appendix B — Expert Review Instrument
 

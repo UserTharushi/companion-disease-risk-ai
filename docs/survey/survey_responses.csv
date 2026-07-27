@@ -1,0 +1,32 @@
+timestamp,consent,pet_type,pet_age_raw,pet_gender,appetite,water_intake,activity_level,vomiting,diarrhoea,diagnosis
+10/01/2026 20:15:31,"Yes, I agree",Dog,4 years,Female,Normal,Normal,Slightly less active,Occasional,,Not diagnosed / Not sure
+10/01/2026 20:37:22,"Yes, I agree",Dog,3 years,Female,Slightly reduced,Normal,Normal,Occasional,,Not diagnosed / Not sure
+10/01/2026 20:39:02,"Yes, I agree",Cat,1 year,Female,Normal,Normal,Normal,No,,Not diagnosed / Not sure
+10/01/2026 20:41:30,"Yes, I agree",Cat,1year and 6month old,Female,Normal,Decreased,Very low activity,Occasional,,several injection allergies
+10/01/2026 20:42:16,"Yes, I agree",Cat,8 years,Female,Normal,Decreased,Slightly less active,Occasional,,Not diagnosed / Not sure
+10/01/2026 20:53:26,"Yes, I agree",Cat,2 years,Male,Slightly reduced,Increased,Very low activity,Occasional,,Chronic Kidney Disease
+10/01/2026 20:53:52,"Yes, I agree",Dog,2 yrs,Female,Normal,Normal,Normal,Occasional,,Not diagnosed / Not sure
+10/01/2026 20:58:06,"Yes, I agree",Dog,5 year,Male,Slightly reduced,Increased,Normal,No,,Not diagnosed / Not sure
+10/01/2026 20:58:09,"Yes, I agree",Dog,5,Male,Normal,Normal,Very low activity,Occasional,,Not diagnosed / Not sure
+10/01/2026 20:58:31,"Yes, I agree",Dog,3,Male,Normal,Normal,Normal,No,,Not diagnosed / Not sure
+10/01/2026 20:58:48,"Yes, I agree",Dog,5 year,Male,Slightly reduced,Increased,Normal,No,,Not diagnosed / Not sure
+10/01/2026 21:19:24,"Yes, I agree",Dog,4,Female,Normal,Normal,Normal,Occasional,,Not diagnosed / Not sure
+10/01/2026 21:24:29,"Yes, I agree",Dog,10 yrs,Female,Normal,Normal,Slightly less active,Occasional,,artherities
+10/01/2026 21:25:02,"Yes, I agree",Cat,4 yrs,Female,Slightly reduced,Increased,Slightly less active,Occasional,,Cancer
+10/01/2026 21:39:20,"Yes, I agree",Dog,5,Male,Normal,Normal,Normal,No,,Chronic Kidney Disease
+10/01/2026 21:40:16,"Yes, I agree",Cat,"No idea, he was old when I adopted him from nowhere.",Male,Normal,Normal,Slightly less active,No,,Not diagnosed / Not sure
+10/01/2026 21:40:17,"Yes, I agree",Cat,1 year,Male,Slightly reduced,Normal,Normal,Occasional,,Not diagnosed / Not sure
+10/01/2026 21:41:07,"Yes, I agree",Dog,4 year,Male,Slightly reduced,Increased,Normal,No,,Not diagnosed / Not sure
+10/01/2026 21:42:16,"Yes, I agree",Dog,5,Female,Normal,Normal,Normal,Occasional,,Not diagnosed / Not sure
+10/01/2026 22:02:38,"Yes, I agree",Dog,8 months,Male,Normal,Normal,Slightly less active,No,No,Not diagnosed / Not sure
+10/01/2026 22:06:27,"Yes, I agree",Dog,6 years,Female,Slightly reduced,Normal,Slightly less active,Occasional,Occasional,Chronic Kidney Disease
+10/01/2026 22:16:21,"Yes, I agree",Dog,4,Male,Normal,Normal,Slightly less active,Occasional,Occasional,Not diagnosed / Not sure
+10/01/2026 22:26:31,"Yes, I agree",Cat,8 year,Male,Normal,Increased,Normal,Occasional,No,Not diagnosed / Not sure
+11/01/2026 00:54:40,"Yes, I agree",Dog,5 years,Male,Normal,Normal,Normal,Occasional,Occasional,Not diagnosed / Not sure
+11/01/2026 00:57:01,"Yes, I agree",Cat,4,Female,Normal,Decreased,Normal,Occasional,No,Not diagnosed / Not sure
+11/01/2026 04:46:12,"Yes, I agree",Dog,2,Male,Normal,Normal,Normal,No,No,Not diagnosed / Not sure
+11/01/2026 08:00:25,"Yes, I agree",Dog,2 years,Male,Normal,Normal,Slightly less active,Occasional,No,Not diagnosed / Not sure
+11/01/2026 09:59:47,"Yes, I agree",Dog,4,Male,Slightly reduced,Decreased,Very low activity,Occasional,Occasional,Not diagnosed / Not sure
+11/01/2026 11:07:16,"Yes, I agree",Dog,7 years,Male,Normal,Normal,Normal,No,No,Not diagnosed / Not sure
+11/01/2026 19:37:52,"Yes, I agree",Dog,6,Female,Slightly reduced,Decreased,Slightly less active,Occasional,Occasional,Chronic Kidney Disease
+17/01/2026 19:33:27,"Yes, I agree",Dog,2,Male,Normal,Normal,Normal,Occasional,No,Not diagnosed / Not sure
