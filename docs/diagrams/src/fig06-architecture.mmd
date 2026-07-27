@@ -1,0 +1,35 @@
+flowchart TB
+    subgraph Client["Client Layer"]
+        FE["React PWA (Vite)<br/>trilingual EN/SI/TA<br/>:3001"]
+    end
+
+    subgraph Gateway["Gateway Layer"]
+        GW["API Gateway :4000<br/>JWT verification · rate limiting<br/>identity-header stamping"]
+    end
+
+    subgraph Node["Node.js Microservices"]
+        AU["auth-service :4001"]
+        PE["pet-service :4002"]
+        CL["clinic-service :4003"]
+        NO["notification-service :4004"]
+        VA["vaccination-service :4005"]
+        AD["admin-service :4006"]
+    end
+
+    subgraph Python["Python Microservices"]
+        AI["ai-service :8001<br/>scikit-learn inference"]
+        AG["agent-service :8002<br/>LangGraph + Gemini"]
+    end
+
+    subgraph Data["Data Layer"]
+        MG[("MongoDB 7")]
+        NE[("Neo4j 5.18<br/>ontology graph")]
+    end
+
+    FE --> GW
+    GW --> AU & PE & CL & NO & VA & AD & AI & AG
+    AG -->|tool call| AI
+    PE -.->|access grants| CL
+    AI -.->|access grants| CL
+    AU & PE & CL & NO & VA & AD & AI --> MG
+    AI & AG --> NE

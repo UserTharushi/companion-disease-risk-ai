@@ -1,0 +1,38 @@
+flowchart TD
+    O(["Pet Owner"])
+    V(["Veterinarian"])
+
+    P1["1.0<br/>Capture Symptom Input"]
+    P2["2.0<br/>Predict Disease Risk"]
+    P3["3.0<br/>Enrich with Ontology"]
+    P4["4.0<br/>Agentic Reasoning"]
+    P5["5.0<br/>Manage Preventive Care"]
+    P6["6.0<br/>Discover & Book Vet"]
+    P7["7.0<br/>Enforce Access Control"]
+
+    D1[("D1: Pet Profiles")]
+    D2[("D2: Predictions")]
+    D3[("D3: Ontology Graph")]
+    D4[("D4: Vaccinations")]
+    D5[("D5: Clinics & Slots")]
+    D6[("D6: Access Grants")]
+
+    O -->|symptoms, vitals| P1
+    P1 -->|structured payload| P2
+    D1 -->|pet demographics| P2
+    P2 -->|risk level, conditions| D2
+    P2 --> P3
+    D3 -->|symptom-disease links| P3
+    P3 -->|enriched prediction| P4
+    D4 -->|due vaccinations| P5
+    P5 -->|preventive findings| P4
+    P4 -->|urgency, guidance, explanation| O
+    P4 -->|required specialisation| P6
+    D5 -->|clinics, surgeons, slots| P6
+    P6 -->|recommended clinic + slot| O
+    O -->|booking| P6
+    P6 -->|appointment created| D6
+    O -->|explicit consent / revoke| D6
+    D6 --> P7
+    P7 -->|permitted records only| V
+    V -->|confirmed diagnosis| D2

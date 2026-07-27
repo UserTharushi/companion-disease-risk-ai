@@ -1,0 +1,13 @@
+flowchart LR
+    S(["POST /analyze<br/>raw symptoms"]) --> A1["Disease Risk<br/>Prediction Agent"]
+    A1 -->|tool call| ML["ai-service /predict"]
+    ML --> A1
+    A1 --> CTX["context_loader<br/>pet · vaccinations · ontology"]
+    CTX --> A2["Explainable Care<br/>Recommendation Agent"]
+    A2 -->|needs_vet?| DEC{"risk ≥ medium<br/>or short urgency"}
+    DEC -->|yes| A3["Veterinary Discovery<br/>& Booking Agent"]
+    DEC -->|no| RC["response_composer"]
+    A3 --> RC
+    RC --> OUT(["agent_trace · agents[] · degraded"])
+
+    MON["Monitoring Agent<br/>APScheduler · autonomous"] -.->|scans pets, vaccinations| NOTIF["Idempotent<br/>risk & vaccination alerts"]

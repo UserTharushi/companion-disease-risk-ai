@@ -1,0 +1,11 @@
+flowchart TD
+    O(["Owner"]) -->|books appointment| BK["Appointment created"]
+    BK -->|auto| G1["Grant<br/>source = appointment"]
+    O -->|explicit share| G2["Grant<br/>source = owner_consent"]
+    G1 & G2 --> REG[("Access Grant Registry<br/>clinic-service")]
+    O -->|revoke| REV["revokedAt set<br/>(soft revoke, auditable)"]
+    REV --> REG
+    REG -->|consulted before release| PS["pet-service"]
+    REG -->|consulted before release| AS["ai-service"]
+    PS & AS -->|permitted records only| V(["Veterinarian"])
+    REG -.->|unreachable → deny| FC["Fail closed"]

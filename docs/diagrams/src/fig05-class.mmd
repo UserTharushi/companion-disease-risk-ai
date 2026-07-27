@@ -1,0 +1,70 @@
+classDiagram
+    class SymptomPayload {
+        +String petId
+        +String species
+        +String breed
+        +Float ageYears
+        +Float weightKg
+        +String appetiteLevel
+        +String waterIntake
+        +String activityLevel
+        +String urineFrequency
+        +String vomitingFrequency
+        +String diarrheaLevel
+        +List~String~ symptoms
+        +Int symptomDurationDays
+    }
+    class FeatureBridge {
+        +payloadToText(p) String
+        +payloadToTokens(p) List
+        +severityIndex(p) Float
+        +bodyCondition(p) String
+        +explainSources(p) List
+        +priorCorrect(p) Float
+    }
+    class Predictor {
+        -conditionModel
+        -riskModel
+        +predict(payload) PredictionResponse
+        -attribute(contribs, payload) List~TopFeature~
+    }
+    class PredictionResponse {
+        +String riskLevel
+        +Float riskScore
+        +Float confidenceScore
+        +List~DiseaseRisk~ predictedDiseases
+        +List~OntologyLink~ ontologyLinks
+        +List~TopFeature~ topFeatures
+        +String disclaimer
+    }
+    class OntologyService {
+        +diseasesForSymptoms(tokens) List
+        +applySchema() void
+    }
+    class AgentGraph {
+        +diseaseRiskAgent(state)
+        +contextLoader(state)
+        +careRecommendationAgent(state)
+        +vetDiscoveryAgent(state)
+        +responseComposer(state)
+    }
+    class MonitoringAgent {
+        +scanPets() void
+        +createAlerts() void
+    }
+    class PetAccessGrant {
+        +String petId
+        +String vetUserId
+        +String source
+        +String grantedAt
+        +String revokedAt
+        +isActive() Boolean
+    }
+
+    SymptomPayload --> FeatureBridge : transformed by
+    FeatureBridge --> Predictor : feeds
+    Predictor --> PredictionResponse : produces
+    OntologyService --> PredictionResponse : enriches
+    PredictionResponse --> AgentGraph : input to
+    AgentGraph --> MonitoringAgent : shares tools
+    PetAccessGrant ..> PredictionResponse : gates access to

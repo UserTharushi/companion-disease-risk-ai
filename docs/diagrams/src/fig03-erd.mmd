@@ -1,0 +1,93 @@
+erDiagram
+    USER ||--o{ PET : owns
+    USER ||--o{ APPOINTMENT : books
+    USER ||--o{ PET_ACCESS_GRANT : "grants access"
+    PET ||--o{ PREDICTION : "has assessments"
+    PET ||--o{ VACCINATION : "has records"
+    PET ||--o{ APPOINTMENT : "scheduled for"
+    PET ||--o{ PET_ACCESS_GRANT : "subject of"
+    CLINIC ||--o{ SURGEON : employs
+    SURGEON ||--o{ TIME_SLOT : offers
+    SURGEON |o--o| USER : "linked to vet account"
+    TIME_SLOT ||--o| APPOINTMENT : "booked as"
+    APPOINTMENT ||--o| PET_ACCESS_GRANT : "establishes"
+    PREDICTION ||--o| DIAGNOSIS : "confirmed by vet"
+
+    USER {
+        string id PK
+        string email UK
+        string passwordHash
+        string displayName
+        string role "owner|vet|admin"
+        string specialization
+        string status "active|inactive"
+        string preferredLanguage "en|si|ta"
+    }
+    PET {
+        string id PK
+        string ownerId FK
+        string name
+        string species "dog|cat"
+        string breed
+        number ageYears
+        number weightKg
+    }
+    PREDICTION {
+        string id PK
+        string petId FK
+        string ownerId FK
+        object payload "symptom input"
+        string riskLevel "low|medium|high"
+        number riskScore
+        number confidenceScore
+        array predictedDiseases
+        array ontologyLinks
+        array topFeatures
+        string vetDiagnosis
+        string feedbackRating
+    }
+    PET_ACCESS_GRANT {
+        string id PK
+        string petId FK
+        string ownerId FK
+        string vetUserId FK
+        string source "appointment|owner_consent"
+        string grantedAt
+        string revokedAt
+    }
+    VACCINATION {
+        string id PK
+        string petId FK
+        string vaccineName
+        string administeredAt
+        string nextDueAt
+    }
+    CLINIC {
+        string id PK
+        string name
+        number latitude
+        number longitude
+        array specializations
+    }
+    SURGEON {
+        string id PK
+        string clinicId FK
+        string name
+        string specialization
+        string userId FK "optional vet account"
+    }
+    TIME_SLOT {
+        string id PK
+        string surgeonId FK
+        string datetime
+        boolean isBooked
+    }
+    APPOINTMENT {
+        string id PK
+        string ownerId FK
+        string petId FK
+        string clinicId FK
+        string surgeonId FK
+        string slotId FK
+        string status
+    }

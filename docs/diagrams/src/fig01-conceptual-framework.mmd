@@ -1,0 +1,19 @@
+flowchart TD
+    A["Owner Observation<br/>appetite · hydration · activity<br/>urination · vomiting · diarrhoea"] --> B["Structured Input Layer<br/>mobile PWA, trilingual"]
+    B --> C["Feature Bridge<br/>form → model representation"]
+    C --> D["ML Prediction Layer<br/>Model A: condition classifier<br/>Model B: calibrated danger probability"]
+    D --> E["Knowledge Ontology<br/>Neo4j: symptom → disease → vaccine"]
+    D --> F["Agentic Reasoning Layer<br/>LangGraph multi-agent pipeline"]
+    E --> F
+    F --> G["Explanation<br/>ontology links + feature attribution"]
+    F --> H["Urgency & Care Guidance"]
+    F --> I["Preventive Care<br/>vaccination analysis"]
+    F --> J["Veterinary Referral<br/>specialisation-aware ranking"]
+    G --> K["Owner Decision"]
+    H --> K
+    I --> K
+    J --> L["Appointment Booking"]
+    L --> M["Veterinarian<br/>relationship-based access"]
+    M --> N["Confirmed Diagnosis"]
+    N --> O["Feedback / Continuous Learning Loop<br/>AI-vs-vet agreement"]
+    O -.->|informs model refinement| D

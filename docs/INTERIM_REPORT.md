@@ -32,7 +32,7 @@
 
 <br>
 
-**Submission Date:** `[Submission Date]`
+**Submission Date:** 30 July 2026
 
 </div>
 
@@ -117,6 +117,7 @@
 | Table 11 | Challenges and Solutions | 4.5 |
 | Table 12 | Remaining Activities | 5.1 |
 | Table 13 | Risk Management Plan | 5.4 |
+| Table 14 | Preliminary Survey Response Summary | 4.2.7 |
 
 ### List of Abbreviations
 
@@ -320,27 +321,9 @@ The reviewed literature establishes four consistent boundaries:
 
 **Figure 1 — Conceptual Framework of the Proposed System**
 
-```mermaid
-flowchart TD
-    A["Owner Observation<br/>appetite · hydration · activity<br/>urination · vomiting · diarrhoea"] --> B["Structured Input Layer<br/>mobile PWA, trilingual"]
-    B --> C["Feature Bridge<br/>form → model representation"]
-    C --> D["ML Prediction Layer<br/>Model A: condition classifier<br/>Model B: calibrated danger probability"]
-    D --> E["Knowledge Ontology<br/>Neo4j: symptom → disease → vaccine"]
-    D --> F["Agentic Reasoning Layer<br/>LangGraph multi-agent pipeline"]
-    E --> F
-    F --> G["Explanation<br/>ontology links + feature attribution"]
-    F --> H["Urgency & Care Guidance"]
-    F --> I["Preventive Care<br/>vaccination analysis"]
-    F --> J["Veterinary Referral<br/>specialisation-aware ranking"]
-    G --> K["Owner Decision"]
-    H --> K
-    I --> K
-    J --> L["Appointment Booking"]
-    L --> M["Veterinarian<br/>relationship-based access"]
-    M --> N["Confirmed Diagnosis"]
-    N --> O["Feedback / Continuous Learning Loop<br/>AI-vs-vet agreement"]
-    O -.->|informs model refinement| D
-```
+![fig01-conceptual-framework](diagrams/fig01-conceptual-framework.png)
+
+*Diagram source: `docs/diagrams/src/fig01-conceptual-framework.mmd`*
 
 The framework is deliberately cyclical. The veterinarian's confirmed diagnosis returns to the system as ground truth, enabling measurement of real-world agreement — a signal distinct from offline test accuracy.
 
@@ -364,139 +347,17 @@ This chapter presents the research design, approach, data strategy, analytical m
 
 **Figure 2 — Use Case Diagram**
 
-```mermaid
-flowchart LR
-    Owner(["Pet Owner"])
-    Vet(["Veterinarian"])
-    Admin(["Administrator"])
-    Agent(["Monitoring Agent<br/>(autonomous)"])
+![fig02-use-case](diagrams/fig02-use-case.png)
 
-    subgraph System["Companion Disease Risk AI"]
-        UC1["Register / Authenticate"]
-        UC2["Manage Pet Profiles"]
-        UC3["Report Symptoms"]
-        UC4["View Risk Assessment<br/>+ Explanation"]
-        UC5["Receive Care Guidance"]
-        UC6["Manage Vaccinations"]
-        UC7["Discover Clinics"]
-        UC8["Book Appointment"]
-        UC9["Grant / Revoke<br/>Record Access"]
-        UC10["Submit Feedback"]
-        UC11["View Assigned Patients"]
-        UC12["Record Confirmed Diagnosis"]
-        UC13["Manage Clinics & Surgeons"]
-        UC14["Provision Vet Accounts"]
-        UC15["View Learning Metrics"]
-        UC16["Generate Risk &<br/>Vaccination Alerts"]
-    end
-
-    Owner --> UC1 & UC2 & UC3 & UC4 & UC5 & UC6 & UC7 & UC8 & UC9 & UC10
-    Vet --> UC1 & UC11 & UC12
-    Admin --> UC1 & UC13 & UC14 & UC15
-    Agent --> UC16
-    UC8 -.->|establishes access| UC11
-    UC12 -.->|ground truth| UC15
-```
+*Diagram source: `docs/diagrams/src/fig02-use-case.mmd`*
 
 ### 3.2.2 Entity Relationship Diagram
 
 **Figure 3 — Entity Relationship Diagram (ERD)**
 
-```mermaid
-erDiagram
-    USER ||--o{ PET : owns
-    USER ||--o{ APPOINTMENT : books
-    USER ||--o{ PET_ACCESS_GRANT : "grants access"
-    PET ||--o{ PREDICTION : "has assessments"
-    PET ||--o{ VACCINATION : "has records"
-    PET ||--o{ APPOINTMENT : "scheduled for"
-    PET ||--o{ PET_ACCESS_GRANT : "subject of"
-    CLINIC ||--o{ SURGEON : employs
-    SURGEON ||--o{ TIME_SLOT : offers
-    SURGEON |o--o| USER : "linked to vet account"
-    TIME_SLOT ||--o| APPOINTMENT : "booked as"
-    APPOINTMENT ||--o| PET_ACCESS_GRANT : "establishes"
-    PREDICTION ||--o| DIAGNOSIS : "confirmed by vet"
+![fig03-erd](diagrams/fig03-erd.png)
 
-    USER {
-        string id PK
-        string email UK
-        string passwordHash
-        string displayName
-        string role "owner|vet|admin"
-        string specialization
-        string status "active|inactive"
-        string preferredLanguage "en|si|ta"
-    }
-    PET {
-        string id PK
-        string ownerId FK
-        string name
-        string species "dog|cat"
-        string breed
-        number ageYears
-        number weightKg
-    }
-    PREDICTION {
-        string id PK
-        string petId FK
-        string ownerId FK
-        object payload "symptom input"
-        string riskLevel "low|medium|high"
-        number riskScore
-        number confidenceScore
-        array predictedDiseases
-        array ontologyLinks
-        array topFeatures
-        string vetDiagnosis
-        string feedbackRating
-    }
-    PET_ACCESS_GRANT {
-        string id PK
-        string petId FK
-        string ownerId FK
-        string vetUserId FK
-        string source "appointment|owner_consent"
-        string grantedAt
-        string revokedAt
-    }
-    VACCINATION {
-        string id PK
-        string petId FK
-        string vaccineName
-        string administeredAt
-        string nextDueAt
-    }
-    CLINIC {
-        string id PK
-        string name
-        number latitude
-        number longitude
-        array specializations
-    }
-    SURGEON {
-        string id PK
-        string clinicId FK
-        string name
-        string specialization
-        string userId FK "optional vet account"
-    }
-    TIME_SLOT {
-        string id PK
-        string surgeonId FK
-        string datetime
-        boolean isBooked
-    }
-    APPOINTMENT {
-        string id PK
-        string ownerId FK
-        string petId FK
-        string clinicId FK
-        string surgeonId FK
-        string slotId FK
-        string status
-    }
-```
+*Diagram source: `docs/diagrams/src/fig03-erd.mmd`*
 
 > The knowledge ontology (diseases, symptoms, vaccines and their weighted relationships) is held in a separate graph database and is therefore not represented in the relational ERD above; its composition is given in Table 8.
 
@@ -504,165 +365,25 @@ erDiagram
 
 **Figure 4 — Level-1 Data Flow Diagram**
 
-```mermaid
-flowchart TD
-    O(["Pet Owner"])
-    V(["Veterinarian"])
+![fig04-dfd](diagrams/fig04-dfd.png)
 
-    P1["1.0<br/>Capture Symptom Input"]
-    P2["2.0<br/>Predict Disease Risk"]
-    P3["3.0<br/>Enrich with Ontology"]
-    P4["4.0<br/>Agentic Reasoning"]
-    P5["5.0<br/>Manage Preventive Care"]
-    P6["6.0<br/>Discover & Book Vet"]
-    P7["7.0<br/>Enforce Access Control"]
-
-    D1[("D1: Pet Profiles")]
-    D2[("D2: Predictions")]
-    D3[("D3: Ontology Graph")]
-    D4[("D4: Vaccinations")]
-    D5[("D5: Clinics & Slots")]
-    D6[("D6: Access Grants")]
-
-    O -->|symptoms, vitals| P1
-    P1 -->|structured payload| P2
-    D1 -->|pet demographics| P2
-    P2 -->|risk level, conditions| D2
-    P2 --> P3
-    D3 -->|symptom-disease links| P3
-    P3 -->|enriched prediction| P4
-    D4 -->|due vaccinations| P5
-    P5 -->|preventive findings| P4
-    P4 -->|urgency, guidance, explanation| O
-    P4 -->|required specialisation| P6
-    D5 -->|clinics, surgeons, slots| P6
-    P6 -->|recommended clinic + slot| O
-    O -->|booking| P6
-    P6 -->|appointment created| D6
-    O -->|explicit consent / revoke| D6
-    D6 --> P7
-    P7 -->|permitted records only| V
-    V -->|confirmed diagnosis| D2
-```
+*Diagram source: `docs/diagrams/src/fig04-dfd.mmd`*
 
 ### 3.2.4 Class Diagram
 
 **Figure 5 — Class Diagram (Core Domain)**
 
-```mermaid
-classDiagram
-    class SymptomPayload {
-        +String petId
-        +String species
-        +String breed
-        +Float ageYears
-        +Float weightKg
-        +String appetiteLevel
-        +String waterIntake
-        +String activityLevel
-        +String urineFrequency
-        +String vomitingFrequency
-        +String diarrheaLevel
-        +List~String~ symptoms
-        +Int symptomDurationDays
-    }
-    class FeatureBridge {
-        +payloadToText(p) String
-        +payloadToTokens(p) List
-        +severityIndex(p) Float
-        +bodyCondition(p) String
-        +explainSources(p) List
-        +priorCorrect(p) Float
-    }
-    class Predictor {
-        -conditionModel
-        -riskModel
-        +predict(payload) PredictionResponse
-        -attribute(contribs, payload) List~TopFeature~
-    }
-    class PredictionResponse {
-        +String riskLevel
-        +Float riskScore
-        +Float confidenceScore
-        +List~DiseaseRisk~ predictedDiseases
-        +List~OntologyLink~ ontologyLinks
-        +List~TopFeature~ topFeatures
-        +String disclaimer
-    }
-    class OntologyService {
-        +diseasesForSymptoms(tokens) List
-        +applySchema() void
-    }
-    class AgentGraph {
-        +diseaseRiskAgent(state)
-        +contextLoader(state)
-        +careRecommendationAgent(state)
-        +vetDiscoveryAgent(state)
-        +responseComposer(state)
-    }
-    class MonitoringAgent {
-        +scanPets() void
-        +createAlerts() void
-    }
-    class PetAccessGrant {
-        +String petId
-        +String vetUserId
-        +String source
-        +String grantedAt
-        +String revokedAt
-        +isActive() Boolean
-    }
+![fig05-class](diagrams/fig05-class.png)
 
-    SymptomPayload --> FeatureBridge : transformed by
-    FeatureBridge --> Predictor : feeds
-    Predictor --> PredictionResponse : produces
-    OntologyService --> PredictionResponse : enriches
-    PredictionResponse --> AgentGraph : input to
-    AgentGraph --> MonitoringAgent : shares tools
-    PetAccessGrant ..> PredictionResponse : gates access to
-```
+*Diagram source: `docs/diagrams/src/fig05-class.mmd`*
 
 ### 3.2.5 System Architecture
 
 **Figure 6 — System Architecture (Microservice Deployment)**
 
-```mermaid
-flowchart TB
-    subgraph Client["Client Layer"]
-        FE["React PWA (Vite)<br/>trilingual EN/SI/TA<br/>:3001"]
-    end
+![fig06-architecture](diagrams/fig06-architecture.png)
 
-    subgraph Gateway["Gateway Layer"]
-        GW["API Gateway :4000<br/>JWT verification · rate limiting<br/>identity-header stamping"]
-    end
-
-    subgraph Node["Node.js Microservices"]
-        AU["auth-service :4001"]
-        PE["pet-service :4002"]
-        CL["clinic-service :4003"]
-        NO["notification-service :4004"]
-        VA["vaccination-service :4005"]
-        AD["admin-service :4006"]
-    end
-
-    subgraph Python["Python Microservices"]
-        AI["ai-service :8001<br/>scikit-learn inference"]
-        AG["agent-service :8002<br/>LangGraph + Gemini"]
-    end
-
-    subgraph Data["Data Layer"]
-        MG[("MongoDB 7")]
-        NE[("Neo4j 5.18<br/>ontology graph")]
-    end
-
-    FE --> GW
-    GW --> AU & PE & CL & NO & VA & AD & AI & AG
-    AG -->|tool call| AI
-    PE -.->|access grants| CL
-    AI -.->|access grants| CL
-    AU & PE & CL & NO & VA & AD & AI --> MG
-    AI & AG --> NE
-```
+*Diagram source: `docs/diagrams/src/fig06-architecture.mmd`*
 
 ## 3.3 Research Approach
 
@@ -675,7 +396,7 @@ System development follows an **iterative SDLC**, permitting continuous refineme
 
 ## 3.4 Data Collection Methods
 
-**Primary data.** A structured online survey of dog and cat owners is planned, capturing observable symptoms (appetite, water intake, urination frequency, activity level, vomiting), vaccination status, and basic pet demographics. **This survey has not yet been administered**; it is scheduled in the remaining work plan (Section 5.1). Consequently, no primary survey data informs the results reported in Chapter 4.
+**Primary data.** A structured online survey of dog and cat owners has been administered, capturing observable symptoms (appetite, water intake, urination frequency, activity level, vomiting), vaccination status, health-seeking behaviour, and basic pet demographics. **Collection is ongoing: 31 valid responses have been received to date against a target of 100–150.** The current sample is therefore treated as a *preliminary* dataset suitable for descriptive characterisation and for validating the realism of the symptom vocabulary, but not yet sufficient for inferential analysis or for model retraining. Survey data does not inform the machine learning results reported in Chapter 4; the relationship between the two is discussed in Section 4.2.7.
 
 **Secondary data.** Model training to date has used validated public datasets supplemented by knowledge-grounded synthetic generation.
 
@@ -692,7 +413,17 @@ System development follows an **iterative SDLC**, permitting continuous refineme
 
 ## 3.5 Sampling Technique and Sample Size
 
-**Survey sampling (planned).** Non-probability **purposive sampling** targeting dog and cat owners in Sri Lanka, distributed through veterinary clinics, animal welfare organisations, and online pet-owner communities. A target of **100–150 valid responses** is set as sufficient for descriptive characterisation of symptom prevalence and for validating the realism of the symptom vocabulary. Inclusion criterion: current owner of at least one dog or cat.
+**Survey sampling (in progress).** Non-probability **purposive sampling** targeting dog and cat owners in Sri Lanka, distributed through veterinary clinics, animal welfare organisations, and online pet-owner communities. Inclusion criterion: current owner of at least one dog or cat.
+
+A target of **100–150 valid responses** was set as sufficient for descriptive characterisation of symptom prevalence and for validating the realism of the symptom vocabulary. **31 valid responses (approximately 21–31% of target) have been collected at the time of this report**, and collection continues.
+
+The implications of the current sample size are stated plainly rather than minimised:
+
+- The sample supports **descriptive** reporting of symptom prevalence and health-seeking behaviour, and is adequate for **face validation** of the symptom vocabulary — confirming that the attributes the system asks about are ones owners can actually observe and report.
+- It is **not** sufficient for inferential statistics, subgroup comparison (for example dog versus cat owners), or model retraining, where a sample of this size would risk overfitting to idiosyncratic responses.
+- Purposive, self-selecting online recruitment carries a **self-selection bias** toward more engaged and digitally literate owners, who are plausibly more attentive to their animals' health than the general population. This limits generalisability and is reported as a limitation rather than corrected for.
+
+Continued collection is the highest-priority remaining activity (Section 5.1, A2).
 
 **Expert review sampling (planned).** Purposive sampling of **3–5 practising veterinary surgeons** to review a stratified sample of system predictions. A prepared review instrument and answer key already exist (`docs/ml/expert_review_sample.csv`).
 
@@ -745,7 +476,7 @@ The study involves animal health information supplied by human participants and 
 
 ## 3.9 Chapter Summary
 
-The study adopts Design Science Research with a mixed-method strategy and an iterative SDLC. System design is expressed through use case, entity relationship, data flow, class, and deployment models. Model evaluation to date rests on public and knowledge-grounded synthetic datasets, with primary survey collection and expert review scheduled in the remaining work plan. Ethical safeguards centre on non-diagnostic positioning, data minimisation, and relationship-based access control.
+The study adopts Design Science Research with a mixed-method strategy and an iterative SDLC. System design is expressed through use case, entity relationship, data flow, class, and deployment models. Model evaluation to date rests on public and knowledge-grounded synthetic datasets. Primary survey collection is under way with 31 responses received against a 100–150 target, and expert veterinary review is scheduled in the remaining work plan. Ethical safeguards centre on non-diagnostic positioning, data minimisation, and relationship-based access control.
 
 ---
 
@@ -801,21 +532,9 @@ A working end-to-end prototype has been implemented and is operational across al
 
 **Figure 7 — Agentic AI Pipeline (LangGraph Orchestration)**
 
-```mermaid
-flowchart LR
-    S(["POST /analyze<br/>raw symptoms"]) --> A1["Disease Risk<br/>Prediction Agent"]
-    A1 -->|tool call| ML["ai-service /predict"]
-    ML --> A1
-    A1 --> CTX["context_loader<br/>pet · vaccinations · ontology"]
-    CTX --> A2["Explainable Care<br/>Recommendation Agent"]
-    A2 -->|needs_vet?| DEC{"risk ≥ medium<br/>or short urgency"}
-    DEC -->|yes| A3["Veterinary Discovery<br/>& Booking Agent"]
-    DEC -->|no| RC["response_composer"]
-    A3 --> RC
-    RC --> OUT(["agent_trace · agents[] · degraded"])
+![fig07-agent-pipeline](diagrams/fig07-agent-pipeline.png)
 
-    MON["Monitoring Agent<br/>APScheduler · autonomous"] -.->|scans pets, vaccinations| NOTIF["Idempotent<br/>risk & vaccination alerts"]
-```
+*Diagram source: `docs/diagrams/src/fig07-agent-pipeline.mmd`*
 
 Every response carries an `agent_trace`, a per-agent breakdown, and a `degraded` flag. Where the language model is unavailable or rate-limited, the entire layer degrades to deterministic rules and the interface displays a "Rule-based mode" badge, so the system never hard-fails.
 
@@ -827,19 +546,9 @@ Every response carries an `agent_trace`, a per-agent breakdown, and a `degraded`
 
 **Figure 8 — Relationship-Based Access Control Model**
 
-```mermaid
-flowchart TD
-    O(["Owner"]) -->|books appointment| BK["Appointment created"]
-    BK -->|auto| G1["Grant<br/>source = appointment"]
-    O -->|explicit share| G2["Grant<br/>source = owner_consent"]
-    G1 & G2 --> REG[("Access Grant Registry<br/>clinic-service")]
-    O -->|revoke| REV["revokedAt set<br/>(soft revoke, auditable)"]
-    REV --> REG
-    REG -->|consulted before release| PS["pet-service"]
-    REG -->|consulted before release| AS["ai-service"]
-    PS & AS -->|permitted records only| V(["Veterinarian"])
-    REG -.->|unreachable → deny| FC["Fail closed"]
-```
+![fig08-access-control](diagrams/fig08-access-control.png)
+
+*Diagram source: `docs/diagrams/src/fig08-access-control.mmd`*
 
 The rule enforced is: *a veterinarian may read a pet's health information only while an active grant links them to that pet*. Grants arise from an appointment with that veterinarian — persisting beyond the visit to provide continuity of care for returning patients — or from explicit owner consent, revocable at any time. Revocation is soft, retaining the record so that access history remains auditable. Enforcement resides in the services rather than the interface, and fails closed: if the grant registry is unreachable, access is denied rather than granted.
 
@@ -951,6 +660,35 @@ The autonomous monitoring agent was verified to scan pets and vaccination record
 
 Access control was verified through an explicit test matrix confirming that an ungranted veterinarian receives zero records on both list and direct-fetch endpoints; that a granted veterinarian receives exactly the permitted pet; that a *different* veterinarian remains denied throughout; that revocation immediately removes access; and that the owner's own view is unaffected in every case. Recording a diagnosis was confirmed to require an active grant.
 
+### 4.2.7 Preliminary Survey Findings
+
+The owner survey described in Section 3.4 is open and has returned **31 valid responses** to date. Analysis at this stage is descriptive and preliminary; the sample is below the 100–150 target and no inferential claims are drawn from it.
+
+**Table 14 — Preliminary Survey Response Summary**
+
+| Item | Value |
+|---|---|
+| Valid responses received | 31 |
+| Target sample size | 100–150 |
+| Collection status | Open — continuing |
+| Species distribution (dog / cat / both) | `[to be completed from response data]` |
+| Most frequently reported observable change | `[to be completed]` |
+| Proportion reporting a delay of ≥ 3 days before consulting a veterinarian | `[to be completed]` |
+| Proportion aware of their pet's next vaccination due date | `[to be completed]` |
+| Proportion currently using any pet health application | `[to be completed]` |
+| Preferred interface language (EN / SI / TA) | `[to be completed]` |
+
+> **Placeholders above are deliberate.** The response figures have not been transcribed into this report, and no values have been estimated or inferred. They will be completed directly from the response data before final submission.
+
+**Purpose of the survey within the research design.** It is worth stating precisely what this survey does and does not contribute, since its role is easily misread:
+
+1. **Face validation of the symptom vocabulary (primary purpose).** The system asks owners about appetite, water intake, urination frequency, activity level, vomiting, and diarrhoea. The survey tests whether these are attributes owners can actually observe and report with confidence — a prerequisite for the entire input design. This purpose is well served even by a modest sample.
+2. **Characterisation of health-seeking delay.** Quantifying how long owners typically wait between noticing a change and consulting a veterinarian provides direct empirical support for the problem statement in Section 1.2.
+3. **Language and adoption preferences.** Informs the trilingual interface priority and identifies adoption barriers.
+4. **What it does *not* do.** The survey is **not** a training data source for the machine learning models. Owner-reported symptom sets are not accompanied by veterinary-confirmed labels, so they cannot supervise a classifier. Model training rests on the datasets in Table 3, and the route to label-bearing real-world data is the feedback loop in Section 4.1.5, not the survey.
+
+This distinction matters for the evaluation narrative: a larger survey improves the *justification* and *usability grounding* of the system, whereas improved *predictive validity* depends on expert review (Activity A4) and on accumulated veterinarian-confirmed diagnoses.
+
 ## 4.3 Screenshots and Diagrams
 
 Diagrams are embedded throughout this chapter (Figures 6–8) and Chapter 3 (Figures 2–6). The Model A confusion matrix is available at `docs/ml/condition_confusion_matrix.png`.
@@ -1001,9 +739,9 @@ Two of these solutions constitute methodological contributions rather than mere 
 
 | ID | Activity | Description | Priority |
 |---|---|---|---|
-| A1 | Survey instrument design and ethical clearance | Finalise the questionnaire; obtain departmental ethical approval | High |
-| A2 | Primary data collection | Administer the survey to dog and cat owners (target 100–150 responses) | High |
-| A3 | Survey analysis and model refinement | Analyse symptom prevalence; validate the symptom vocabulary; retrain with any usable primary data | High |
+| A1 | ~~Survey instrument design~~ — **complete** | Questionnaire designed and deployed; 31 responses received | Done |
+| A2 | **Continue survey collection** | Extend distribution to reach 100–150 responses; currently at 31. Widen channels: veterinary clinics, welfare organisations, university networks, pet-owner groups | High |
+| A3 | Survey analysis | Complete descriptive analysis; transcribe results into Table 14; validate symptom vocabulary and quantify health-seeking delay | High |
 | A4 | Expert veterinary review | Distribute the prepared review sample to 3–5 practising surgeons; analyse agreement | High |
 | A5 | Formal usability testing | Task-based evaluation with representative owners; System Usability Scale administration | High |
 | A6 | Model B dataset improvement | Source or construct a better-balanced danger dataset to address the imbalance limitation | Medium |
@@ -1018,40 +756,9 @@ Two of these solutions constitute methodological contributions rather than mere 
 
 **Figure 10 — Project Timeline**
 
-```mermaid
-gantt
-    title Project Timeline — Companion Disease Risk AI
-    dateFormat YYYY-MM-DD
-    axisFormat %b %Y
+![fig10-gantt](diagrams/fig10-gantt.png)
 
-    section Completed
-    Literature review + proposal        :done, p1, 2026-01-01, 2026-01-18
-    Requirements specification          :done, p2, 2026-01-19, 2026-02-15
-    System analysis and design          :done, p3, 2026-02-01, 2026-03-15
-    ML model development                :done, p4, 2026-03-01, 2026-05-15
-    Agentic layer implementation        :done, p5, 2026-04-15, 2026-06-15
-    Ontology construction               :done, p6, 2026-04-01, 2026-05-15
-    Front-end and service development   :done, p7, 2026-03-15, 2026-07-15
-    Access control redesign             :done, p8, 2026-07-01, 2026-07-26
-    Interim report                      :active, p9, 2026-07-20, 2026-08-05
-
-    section Data Collection
-    Survey design + ethical clearance   :a1, 2026-08-01, 2026-08-20
-    Primary data collection             :a2, 2026-08-21, 2026-09-20
-    Survey analysis + model refinement  :a3, 2026-09-21, 2026-10-15
-
-    section Evaluation
-    Expert veterinary review            :a4, 2026-09-15, 2026-10-20
-    Usability testing                   :a5, 2026-10-01, 2026-10-31
-    Model B dataset improvement         :a6, 2026-09-01, 2026-10-15
-    Performance benchmarking            :a9, 2026-10-15, 2026-11-05
-
-    section Finalisation
-    System hardening                    :a10, 2026-11-01, 2026-11-20
-    Screenshot capture + documentation  :a7, 2026-11-01, 2026-11-15
-    Final report writing                :a11, 2026-10-20, 2026-12-10
-    Viva preparation                    :a12, 2026-12-01, 2026-12-20
-```
+*Diagram source: `docs/diagrams/src/fig10-gantt.mmd`*
 
 > **Note.** The schedule beyond the interim submission is indicative and should be reconciled against the official departmental deadlines for final submission and viva.
 
@@ -1109,7 +816,7 @@ The project has progressed from an approved proposal to a fully operational prot
 
 ## Next Steps
 
-Immediate priorities are the design and ethical clearance of the survey instrument, followed by primary data collection and expert veterinary review. These provide the independent validation the project currently lacks: all results reported here derive from public and synthetic datasets, and while the system's *behaviour* is verified, its *clinical plausibility* has not yet been assessed by practitioners. Formal usability testing will address NFR3 and NFR7, and improving the danger-model dataset remains the most valuable technical refinement available.
+Immediate priorities are extending survey collection from the current 31 responses toward the 100–150 target, and securing expert veterinary review. These provide the independent validation the project currently lacks: the machine learning results reported here derive from public and knowledge-grounded synthetic datasets, and while the system's *behaviour* is verified, its *clinical plausibility* has not yet been assessed by practitioners. Formal usability testing will address NFR3 and NFR7, and improving the danger-model dataset remains the most valuable technical refinement available.
 
 The project is on schedule, with the substantial engineering risk now retired and the remaining work concentrated in evaluation and documentation.
 
@@ -1157,9 +864,9 @@ The project is on schedule, with the substantial engineering risk now retired an
 
 # Appendices
 
-## Appendix A — Survey Questionnaire (Draft)
+## Appendix A — Survey Questionnaire
 
-*To be finalised and submitted for ethical clearance (Activity A1).* Planned instrument sections:
+*The instrument has been deployed and has returned 31 responses to date (Section 4.2.7). The administered questionnaire should be attached here in full before final submission.* Instrument structure:
 
 **Section 1 — Participant and pet demographics:** species, breed, age, sex, weight range, number of pets owned.
 
