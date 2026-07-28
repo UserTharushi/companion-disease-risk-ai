@@ -10,6 +10,22 @@ function isServiceCall(headerValue: unknown): boolean {
   return typeof headerValue === "string" && headerValue === SERVICE_KEY;
 }
 
+/**
+ * An owner may only touch vaccination records for their own animals.
+ *
+ * The list route already scoped by ownerId, but fetch-by-id, update and delete
+ * did not, so any authenticated owner could read or destroy another owner's
+ * records by guessing an id. Vets and admins are unrestricted here; their access
+ * to a pet is governed by the access-grant model in clinic-service.
+ */
+function ownerMayNotTouch(req: { headers: Record<string, unknown> }, recordOwnerId?: string): boolean {
+  const uid = req.headers["x-user-id"];
+  const role = req.headers["x-user-role"];
+  if (role !== "owner") return false;
+  if (typeof uid !== "string" || !uid) return false;
+  return recordOwnerId !== uid;
+}
+
 // GET /api/vaccinations?petId=
 vaccinationRouter.get("/", async (req, res, next) => {
   try {
@@ -76,6 +92,9 @@ vaccinationRouter.get("/:vaccinationId", async (req, res, next) => {
     if (!doc) {
       return res.status(404).json({ success: false, message: "Vaccination record not found" });
     }
+    if (ownerMayNotTouch(req, doc.ownerId)) {
+      return res.status(403).json({ success: false, message: "You can only view your own records" });
+    }
     res.json({ success: true, data: toRecord(doc) });
   } catch (err) {
     next(err);
@@ -122,6 +141,13 @@ vaccinationRouter.patch("/:vaccinationId", async (req, res, next) => {
         updates[field] = String(req.body[field]) || undefined;
       }
     }
+    const existing = await VaccinationModel.findById(vaccinationId);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Vaccination record not found" });
+    }
+    if (ownerMayNotTouch(req, existing.ownerId)) {
+      return res.status(403).json({ success: false, message: "You can only modify your own records" });
+    }
     const doc = await VaccinationModel.findByIdAndUpdate(vaccinationId, updates, { new: true });
     if (!doc) {
       return res.status(404).json({ success: false, message: "Vaccination record not found" });
@@ -139,10 +165,14 @@ vaccinationRouter.delete("/:vaccinationId", async (req, res, next) => {
     if (!isValidObjectId(vaccinationId)) {
       return res.status(404).json({ success: false, message: "Vaccination record not found" });
     }
-    const doc = await VaccinationModel.findByIdAndDelete(vaccinationId);
-    if (!doc) {
+    const existing = await VaccinationModel.findById(vaccinationId);
+    if (!existing) {
       return res.status(404).json({ success: false, message: "Vaccination record not found" });
     }
+    if (ownerMayNotTouch(req, existing.ownerId)) {
+      return res.status(403).json({ success: false, message: "You can only delete your own records" });
+    }
+    await VaccinationModel.findByIdAndDelete(vaccinationId);
     res.json({ success: true, message: "Vaccination record deleted" });
   } catch (err) {
     next(err);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Calendar, Camera, Check, Mail, MapPin, Phone, Share2, Stethoscope, Upload } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Calendar, Camera, Check, Mail, MapPin, Pencil, Phone, Share2, Stethoscope, Trash2, Upload } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
@@ -11,7 +11,7 @@ import { getOwnerId, listOwnerPets, type BackendPet } from "../lib/pet-api";
 import { createAppointment, listClinics } from "../lib/clinic-api";
 import { submitPrediction, getPrediction, submitPredictionFeedback, type PredictionResult } from "../lib/prediction-api";
 import { analyzeCase, getRecommendations, type AgentResponse } from "../lib/agent-api";
-import { createVaccination, listVaccinations, type VaccinationRecord } from "../lib/vaccination-api";
+import { createVaccination, deleteVaccination, listVaccinations, updateVaccination, type VaccinationRecord } from "../lib/vaccination-api";
 import {
   listAccessGrants,
   listVetDirectory,
@@ -272,6 +272,8 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
   const [showAddVaccine, setShowAddVaccine] = useState(false);
   const [newVaccine, setNewVaccine] = useState({ vaccineName: "", administeredAt: "", nextDueAt: "" });
   const [savingVaccine, setSavingVaccine] = useState(false);
+  const [editingVaccineId, setEditingVaccineId] = useState<string | null>(null);
+  const [editVaccineDraft, setEditVaccineDraft] = useState({ vaccineName: "", administeredAt: "", nextDueAt: "" });
 
   const pickLang = (en: string, si: string, ta: string) =>
     (language === "si" ? si : language === "ta" ? ta : en);
@@ -360,6 +362,49 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
       toast({ title: language === "si" ? "සුරැකීම අසාර්ථකයි" : language === "ta" ? "சேமிக்க முடியவில்லை" : "Could not save record", variant: "error" });
     } finally {
       setSavingVaccine(false);
+    }
+  }
+
+  function startVaccineEdit(recordId: string) {
+    const record = vaccineRecords.find((r) => r.id === recordId);
+    if (!record) return;
+    setEditVaccineDraft({
+      vaccineName: record.vaccineName,
+      // <input type="date"> needs YYYY-MM-DD, not the stored ISO timestamp.
+      administeredAt: record.administeredAt.slice(0, 10),
+      nextDueAt: record.nextDueAt.slice(0, 10),
+    });
+    setEditingVaccineId(recordId);
+  }
+
+  async function saveVaccineEdit(recordId: string) {
+    if (!editVaccineDraft.vaccineName.trim() || !editVaccineDraft.administeredAt || !editVaccineDraft.nextDueAt) {
+      toast({ title: pickLang("Please complete all fields", "සියලු ක්ෂේත්‍ර සම්පූර්ණ කරන්න", "அனைத்து புலங்களையும் நிரப்பவும்"), variant: "error" });
+      return;
+    }
+    setSavingVaccine(true);
+    try {
+      const updated = await updateVaccination(recordId, {
+        vaccineName: editVaccineDraft.vaccineName.trim(),
+        administeredAt: new Date(editVaccineDraft.administeredAt).toISOString(),
+        nextDueAt: new Date(editVaccineDraft.nextDueAt).toISOString(),
+      });
+      setVaccineRecords((prev) => prev.map((r) => (r.id === recordId ? updated : r)));
+      setEditingVaccineId(null);
+    } catch (err) {
+      toast({ title: (err as Error).message || "Could not update record", variant: "error" });
+    } finally {
+      setSavingVaccine(false);
+    }
+  }
+
+  async function removeVaccineRecord(recordId: string, name: string) {
+    if (!window.confirm(`${pickLang("Delete", "මකන්න", "நீக்கு")}: "${name}"?`)) return;
+    try {
+      await deleteVaccination(recordId);
+      setVaccineRecords((prev) => prev.filter((r) => r.id !== recordId));
+    } catch (err) {
+      toast({ title: (err as Error).message || "Could not delete record", variant: "error" });
     }
   }
 
@@ -528,15 +573,60 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
           )}
           {vaccineHistory.map((v) => (
             <article key={v.id} className="rounded-2xl border border-border bg-surface p-4 dark:border-neutral-700 dark:bg-neutral-950">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[13px] font-semibold text-accent">{v.name}</p>
-                  <p className="text-sm text-accent-subtle">{v.date} • {v.freq}</p>
+              {editingVaccineId === v.id ? (
+                // Records were previously add-only: a mistyped date could not be
+                // corrected, and a wrong next-due date drives the reminder logic.
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-sm">{pickLang("Vaccine name", "එන්නතේ නම", "தடுப்பூசி பெயர்")}</Label>
+                    <input className={`mt-1 ${selectClass}`} value={editVaccineDraft.vaccineName} onChange={(e) => setEditVaccineDraft((d) => ({ ...d, vaccineName: e.target.value }))} />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label className="text-sm">{pickLang("Date administered", "ලබා දුන් දිනය", "வழங்கிய தேதி")}</Label>
+                      <input type="date" className={`mt-1 ${selectClass}`} value={editVaccineDraft.administeredAt} onChange={(e) => setEditVaccineDraft((d) => ({ ...d, administeredAt: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label className="text-sm">{pickLang("Next due date", "ඊළඟ නියමිත දිනය", "அடுத்த தேதி")}</Label>
+                      <input type="date" className={`mt-1 ${selectClass}`} value={editVaccineDraft.nextDueAt} onChange={(e) => setEditVaccineDraft((d) => ({ ...d, nextDueAt: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button className="flex-1" onClick={() => saveVaccineEdit(v.id)} disabled={savingVaccine}>
+                      {pickLang("Save", "සුරකින්න", "சேமி")}
+                    </Button>
+                    <Button className="flex-1" variant="secondary" onClick={() => setEditingVaccineId(null)}>
+                      {pickLang("Cancel", "අවලංගු කරන්න", "ரத்து")}
+                    </Button>
+                  </div>
                 </div>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-bold uppercase ${v.status === "active" ? "bg-success-light text-success-fg" : "bg-warning-light text-warning-fg"}`}>
-                  {v.status === "active" ? "Active" : "Due Soon"}
-                </span>
-              </div>
+              ) : (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-accent">{v.name}</p>
+                    <p className="text-sm text-accent-subtle">{v.date} • {v.freq}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold uppercase ${v.status === "active" ? "bg-success-light text-success-fg" : "bg-warning-light text-warning-fg"}`}>
+                      {v.status === "active" ? pickLang("Active", "සක්‍රියයි", "செயலில்") : pickLang("Due Soon", "ඉක්මනින්", "விரைவில்")}
+                    </span>
+                    <button
+                      onClick={() => startVaccineEdit(v.id)}
+                      className="rounded-md p-1.5 text-accent-faint transition hover:bg-surface-tertiary hover:text-accent dark:hover:bg-neutral-800"
+                      aria-label={pickLang("Edit", "සංස්කරණය", "திருத்து")}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => removeVaccineRecord(v.id, v.name)}
+                      className="rounded-md p-1.5 text-accent-faint transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                      aria-label={pickLang("Delete", "මකන්න", "நீக்கு")}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </article>
           ))}
         </div>
