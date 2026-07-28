@@ -101,6 +101,28 @@ vaccinationRouter.get("/:vaccinationId", async (req, res, next) => {
   }
 });
 
+/**
+ * DELETE /api/vaccinations/pet/:petId — remove every record for a pet.
+ *
+ * Called by pet-service when a pet is deleted. Without it, records survive
+ * their pet and become invisible: the history view filters by the current pet
+ * id, so a pet that is deleted and re-added appears to have lost its history
+ * while the rows remain in the database forever.
+ *
+ * Service-key guarded - this is an internal cleanup, not a user action.
+ */
+vaccinationRouter.delete("/pet/:petId", async (req, res, next) => {
+  try {
+    if (!isServiceCall(req.headers["x-service-key"])) {
+      return res.status(403).json({ success: false, message: "Service key required" });
+    }
+    const result = await VaccinationModel.deleteMany({ petId: req.params.petId });
+    res.json({ success: true, data: { deleted: result.deletedCount ?? 0 } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/vaccinations
 vaccinationRouter.post("/", async (req, res, next) => {
   try {

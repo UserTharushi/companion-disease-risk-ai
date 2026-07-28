@@ -29,6 +29,39 @@ const SERVICE_KEY = process.env.SERVICE_KEY || "internal-dev-key";
  * authorization check, so a clinic-service outage hides records rather than
  * exposing every pet on the platform.
  */
+const VACCINATION_SERVICE_URL = process.env.VACCINATION_SERVICE_URL || "http://localhost:4005";
+
+/**
+ * Remove the data that belongs to a deleted pet.
+ *
+ * Deleting a pet previously removed only the pet document, which left:
+ *   - vaccination records orphaned and invisible (the history view filters by
+ *     the current pet id, so a pet deleted and re-added appears to lose its
+ *     history while the rows stay in the database)
+ *   - time slots permanently marked booked, so nobody could ever book them again
+ *   - veterinarians holding access grants to an animal that no longer exists
+ *
+ * Failures are logged, not thrown: the pet is already gone, and refusing to
+ * acknowledge the deletion because a downstream service is unreachable would be
+ * worse than leaving cleanup to be retried.
+ */
+async function cascadeDeletePetData(petId: string): Promise<void> {
+  const targets: Array<[string, string]> = [
+    ["vaccination-service", `${VACCINATION_SERVICE_URL}/api/vaccinations/pet/${encodeURIComponent(petId)}`],
+    ["clinic-service", `${CLINIC_SERVICE_URL}/api/appointments/pet/${encodeURIComponent(petId)}`],
+  ];
+  for (const [name, url] of targets) {
+    try {
+      const response = await fetch(url, { method: "DELETE", headers: { "x-service-key": SERVICE_KEY } });
+      if (!response.ok) {
+        console.warn(`[pet-service] cleanup on ${name} returned ${response.status} for pet ${petId}`);
+      }
+    } catch (err) {
+      console.warn(`[pet-service] cleanup on ${name} failed for pet ${petId}`, err);
+    }
+  }
+}
+
 async function grantedPetIds(vetUserId: string): Promise<string[]> {
   try {
     const response = await fetch(
@@ -145,6 +178,7 @@ petRouter.delete("/:id", async (req, res, next) => {
       return res.status(403).json({ success: false, message: "You can only delete your own pets" });
     }
     await PetModel.findByIdAndDelete(req.params.id);
+    await cascadeDeletePetData(req.params.id);
     res.json({ success: true, message: "Pet deleted" });
   } catch (err) { next(err); }
 });

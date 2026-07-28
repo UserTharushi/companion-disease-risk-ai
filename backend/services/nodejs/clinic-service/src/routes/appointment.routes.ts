@@ -1,5 +1,7 @@
 import { Router, type Request } from "express";
-import { AppointmentModel, TimeSlotModel, grantAccessForAppointment } from "../models/clinic.models";
+import { AppointmentModel, PetAccessGrantModel, TimeSlotModel, grantAccessForAppointment } from "../models/clinic.models";
+
+const SERVICE_KEY = process.env.SERVICE_KEY || "internal-dev-key";
 
 export const appointmentRouter = Router();
 
@@ -133,6 +135,44 @@ appointmentRouter.post("/", async (req, res, next) => {
     }).catch((err) => console.warn("[clinic-service] access grant failed", err));
 
     res.status(201).json({ success: true, data: mapAppointment(appointment) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /api/appointments/pet/:petId — clean up after a deleted pet.
+ *
+ * Releases every slot the pet held, removes its appointments, and revokes its
+ * access grants. Without this a deleted pet permanently consumes its booked
+ * slots (nobody can ever book them again) and leaves veterinarians holding
+ * grants to an animal that no longer exists.
+ *
+ * Service-key guarded - internal cleanup, not a user action.
+ */
+appointmentRouter.delete("/pet/:petId", async (req, res, next) => {
+  try {
+    if (req.headers["x-service-key"] !== SERVICE_KEY) {
+      return res.status(403).json({ success: false, message: "Service key required" });
+    }
+    const { petId } = req.params;
+    const appointments = await AppointmentModel.find({ petId }).lean();
+
+    // Release slots first so they return to the pool even if a later step fails.
+    for (const appointment of appointments) {
+      await releaseSlot(appointment.slotId);
+    }
+    const removed = await AppointmentModel.deleteMany({ petId });
+    const grants = await PetAccessGrantModel.deleteMany({ petId });
+
+    res.json({
+      success: true,
+      data: {
+        slotsReleased: appointments.length,
+        appointmentsRemoved: removed.deletedCount ?? 0,
+        grantsRevoked: grants.deletedCount ?? 0,
+      },
+    });
   } catch (err) {
     next(err);
   }
