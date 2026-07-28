@@ -1,0 +1,30 @@
+%% Research Methodology Flow — Companion Disease Risk AI
+%% Correction vs final methodology diagram.png:
+%%   Primary and secondary data sources were swapped. Primary data is what the
+%%   researcher collects (the owner survey); secondary data already exists
+%%   (public datasets and literature). This matches the approved proposal text.
+%% Render at https://mermaid.live or with mermaid-cli.
+flowchart TD
+    A["<b>Problem Identification</b>"]
+    B["<b>Research Approach</b><br/>Design Science Research"]
+    C["<b>Data Collection</b><br/>Primary: Owner survey<br/>Secondary: Public datasets &amp; literature"]
+    D["<b>Data Preprocessing</b><br/>Cleaning, encoding, normalisation"]
+    E["<b>ML Model Development</b><br/>Disease risk prediction"]
+    F["<b>Agentic AI Decision Layer</b><br/>Risk interpretation &amp; action guidance"]
+    G["<b>Application Development</b><br/>Iterative sprint-based implementation"]
+    H["<b>Testing &amp; Evaluation</b><br/>Model accuracy, usability testing"]
+    I["<b>User Feedback &amp; Refinement</b>"]
+
+    A --> B --> C --> D --> E --> F --> G --> H --> I
+    I -->|refine models| E
+    I -->|refine application| G
+
+    style A fill:#dbeafe,stroke:#3b82f6
+    style B fill:#dbeafe,stroke:#3b82f6
+    style C fill:#dbeafe,stroke:#3b82f6
+    style D fill:#dbeafe,stroke:#3b82f6
+    style E fill:#dbeafe,stroke:#3b82f6
+    style F fill:#dbeafe,stroke:#3b82f6
+    style G fill:#dbeafe,stroke:#3b82f6
+    style H fill:#dbeafe,stroke:#3b82f6
+    style I fill:#dbeafe,stroke:#3b82f6

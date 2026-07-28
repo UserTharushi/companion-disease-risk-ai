@@ -1,0 +1,93 @@
+@startuml
+' Use Case Diagram — Companion Disease Risk AI
+' Render at https://www.plantuml.com/plantuml or the VS Code PlantUML extension.
+' Corrections vs the earlier draw.io version:
+'   - "View Home Remedies" removed (not implemented, and implies treatment advice,
+'     which contradicts the decision-support-not-diagnosis positioning)
+'   - spelling fixed: Appointments, Directory
+'   - added the vet-side and owner-side features that were missing
+'   - added the autonomous monitoring agent as a system actor
+
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam shadowing false
+
+actor "Pet Owner"        as Owner
+actor "Veterinarian"     as Vet
+actor "Administrator"    as Admin
+actor "Monitoring Agent\n(autonomous)" as Agent
+
+rectangle "Pet Health Risk Detection and Preventive Care System" {
+
+  usecase "Register Account"            as UC01
+  usecase "Login"                       as UC02
+
+  usecase "Create Pet Profile"          as UC03
+  usecase "Manage Pet Profile"          as UC04
+  usecase "Enter Symptoms"              as UC05
+  usecase "View Risk Prediction"        as UC06
+  usecase "View Prediction Explanation" as UC07
+  usecase "View Prediction History"     as UC08
+  usecase "Submit Feedback on Result"   as UC09
+  usecase "Use AI Health Assistant"     as UC10
+
+  usecase "Add Vaccination Records"     as UC11
+  usecase "Receive Vaccination Alerts"  as UC12
+
+  usecase "View Recommended Clinics"    as UC13
+  usecase "View Surgeons"               as UC14
+  usecase "Make Appointment"            as UC15
+
+  usecase "Share Pet Records with Vet"  as UC16
+  usecase "Revoke Record Access"        as UC17
+
+  usecase "View Assigned Patients"      as UC18
+  usecase "Record Confirmed Diagnosis"  as UC19
+  usecase "Manage Appointments"         as UC20
+  usecase "Respond to Owner Inquiries"  as UC21
+
+  usecase "Manage Clinic and Vet Directory" as UC22
+  usecase "Provision Veterinarian Accounts" as UC23
+  usecase "View Learning Metrics"           as UC24
+
+  usecase "Generate Risk and\nVaccination Alerts" as UC25
+}
+
+Owner --> UC01
+Owner --> UC02
+Owner --> UC03
+Owner --> UC04
+Owner --> UC05
+Owner --> UC06
+Owner --> UC07
+Owner --> UC08
+Owner --> UC09
+Owner --> UC10
+Owner --> UC11
+Owner --> UC12
+Owner --> UC13
+Owner --> UC14
+Owner --> UC15
+Owner --> UC16
+Owner --> UC17
+
+Vet --> UC02
+Vet --> UC18
+Vet --> UC19
+Vet --> UC20
+Vet --> UC21
+
+Admin --> UC02
+Admin --> UC22
+Admin --> UC23
+Admin --> UC24
+
+Agent --> UC25
+
+UC05 .> UC06 : <<include>>
+UC06 .> UC07 : <<include>>
+UC15 .> UC18 : <<grants access>>
+UC19 .> UC24 : <<feeds>>
+
+@enduml

@@ -1,0 +1,83 @@
+// System Architecture — Companion Disease Risk AI
+// Paste into https://app.eraser.io  →  new Diagram-as-code file
+// Ports shown match docker-compose.yml.
+
+title Companion Disease Risk AI — System Architecture
+
+// ─────────── Client ───────────
+Client Layer [icon: monitor, color: blue] {
+  React PWA [icon: react, label: "React PWA (Vite)\ntrilingual EN/SI/TA\n:3001"]
+}
+
+// ─────────── Gateway ───────────
+Gateway Layer [icon: shield, color: purple] {
+  API Gateway [icon: server, label: "api-gateway :4000\nJWT verification\nrate limiting\nidentity-header stamping"]
+}
+
+// ─────────── Node.js services ───────────
+Node.js Microservices [icon: nodejs, color: green] {
+  Auth Service [icon: lock, label: "auth-service :4001\nJWT + bcrypt\nvet provisioning"]
+  Pet Service [icon: heart, label: "pet-service :4002\npet profiles\ngrant-scoped access"]
+  Clinic Service [icon: hospital, label: "clinic-service :4003\nclinics · surgeons · slots\nappointments · access grants"]
+  Notification Service [icon: bell, label: "notification-service :4004\nin-app notifications"]
+  Vaccination Service [icon: syringe, label: "vaccination-service :4005\nrecords · due/overdue"]
+  Admin Service [icon: settings, label: "admin-service :4006\napprovals · tickets\nappend-only audit"]
+}
+
+// ─────────── Python services ───────────
+Python Microservices [icon: python, color: orange] {
+  AI Service [icon: cpu, label: "ai-service :8001\nModel A: condition classifier\nModel B: danger probability\nfeature attribution"]
+  Agent Service [icon: zap, label: "agent-service :8002\nLangGraph pipeline\n4 agents + APScheduler"]
+}
+
+// ─────────── Data ───────────
+Data Layer [icon: database, color: gray] {
+  MongoDB [icon: mongodb, label: "MongoDB 7\nusers · pets · predictions\nappointments · grants"]
+  Neo4j [icon: neo4j, label: "Neo4j 5.18\nontology graph\n20 diseases · 24 symptoms\n48 INDICATES · 12 PREVENTS"]
+}
+
+// ─────────── External ───────────
+External Services [icon: cloud, color: red] {
+  Gemini [icon: google, label: "Google Gemini\ngemini-flash-latest\n(rule fallback on failure)"]
+  OpenStreetMap [icon: map-pin, label: "OpenStreetMap\nveterinary POIs"]
+}
+
+// ─────────── Request flow ───────────
+React PWA > API Gateway: HTTPS + Bearer JWT
+
+API Gateway > Auth Service
+API Gateway > Pet Service
+API Gateway > Clinic Service
+API Gateway > Notification Service
+API Gateway > Vaccination Service
+API Gateway > Admin Service
+API Gateway > AI Service
+API Gateway > Agent Service
+
+// ─────────── Service-to-service ───────────
+Agent Service > AI Service: tool call (/predict)
+Agent Service > Clinic Service: clinic ranking
+Agent Service > Vaccination Service: due vaccinations
+Agent Service > Notification Service: autonomous alerts
+
+// Relationship-based access control: both services consult the grant
+// registry before releasing pet health data, and fail closed if it is
+// unreachable.
+Pet Service > Clinic Service: access-grant check
+AI Service > Clinic Service: access-grant check
+
+// ─────────── Persistence ───────────
+Auth Service > MongoDB
+Pet Service > MongoDB
+Clinic Service > MongoDB
+Notification Service > MongoDB
+Vaccination Service > MongoDB
+Admin Service > MongoDB
+AI Service > MongoDB: prediction history
+
+AI Service > Neo4j: symptom → disease links
+Agent Service > Neo4j: ontology context
+
+// ─────────── External calls ───────────
+Agent Service > Gemini: explanation & phrasing
+Clinic Service > OpenStreetMap: nearby clinic discovery
