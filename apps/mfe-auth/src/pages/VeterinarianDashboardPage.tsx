@@ -16,7 +16,8 @@ import { toast } from "../lib/use-toast";
 import { listAllAppointments, listClinics, updateAppointment, listInquiries, replyToInquiry } from "../lib/clinic-api";
 import { listAllPets, type BackendPet } from "../lib/pet-api";
 import { listVaccinations } from "../lib/vaccination-api";
-import { getPredictionHistory, recordVetDiagnosis } from "../lib/prediction-api";
+import { getPrediction, getPredictionHistory, recordVetDiagnosis, type StoredPrediction } from "../lib/prediction-api";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { getMyProfile, updateMyProfile } from "../lib/auth-api";
 import type { Appointment as BackendAppointment, SurgeonInquiry, VetClinic } from "@companion-ai/shared-types";
 import {
@@ -24,6 +25,7 @@ import {
   AlertTriangle,
   Calendar,
   Check,
+  ChevronRight,
   ClipboardCheck,
   Clock,
   LayoutDashboard,
@@ -120,6 +122,9 @@ export function VeterinarianDashboardPage() {
   const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
   const [patients, setPatients] = useState<PatientRow[]>([]);
   const [inquiries, setInquiries] = useState<SurgeonInquiry[]>([]);
+  const [viewingAssessmentFor, setViewingAssessmentFor] = useState<PatientRow | null>(null);
+  const [viewedAssessment, setViewedAssessment] = useState<StoredPrediction | null>(null);
+  const [assessmentLoading, setAssessmentLoading] = useState(false);
 
   // Record-diagnosis state (vet confirms the actual diagnosis for a patient's
   // latest AI assessment — feeds the AI-vs-actual continuous-learning loop)
@@ -435,6 +440,32 @@ export function VeterinarianDashboardPage() {
   function formatSlot(datetime: string | null) {
     if (!datetime) return "—";
     return new Date(datetime).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  }
+
+  /**
+   * Open the full assessment behind a patient's summary line.
+   *
+   * The patient card previously showed only a risk badge and the top condition
+   * name, yet the vet is asked to confirm or contradict that prediction - and
+   * their diagnosis feeds the AI-vs-vet agreement metric. Confirming a
+   * prediction whose reasoning you cannot see is not a meaningful check, so the
+   * conditions, reported symptoms, contributing factors and ontology links are
+   * all surfaced here.
+   */
+  async function viewAssessment(patient: PatientRow) {
+    const predictionId = patient.lastRisk?.predictionId;
+    if (!predictionId) return;
+    setViewingAssessmentFor(patient);
+    setViewedAssessment(null);
+    setAssessmentLoading(true);
+    try {
+      setViewedAssessment(await getPrediction(predictionId));
+    } catch (err) {
+      toast({ title: (err as Error).message || tr("actionFailed"), variant: "error" });
+      setViewingAssessmentFor(null);
+    } finally {
+      setAssessmentLoading(false);
+    }
   }
 
   function openDiagnosis(patient: PatientRow) {
@@ -822,10 +853,15 @@ export function VeterinarianDashboardPage() {
                           <div className="flex items-center justify-between">
                             <span className="text-accent-subtle">{tr("lastAiAssessment")}</span>
                             {patient.lastRisk ? (
-                              <span className="flex items-center gap-1.5 font-medium text-accent dark:text-white">
+                              <button
+                                onClick={() => viewAssessment(patient)}
+                                className="flex items-center gap-1.5 font-medium text-accent underline-offset-2 hover:underline dark:text-white"
+                                title={tr("viewAssessment")}
+                              >
                                 <Badge variant={riskBadge(patient.lastRisk.level)}>{levelLabel(patient.lastRisk.level)}</Badge>
                                 {patient.lastRisk.disease}
-                              </span>
+                                <ChevronRight className="h-3 w-3 text-accent-faint" />
+                              </button>
                             ) : (
                               <span className="text-accent-faint">—</span>
                             )}
@@ -969,6 +1005,94 @@ export function VeterinarianDashboardPage() {
           </div>
         </main>
       </div>
+
+      {/* Full AI assessment behind a patient's summary line. */}
+      <Dialog open={Boolean(viewingAssessmentFor)} onOpenChange={(open) => { if (!open) { setViewingAssessmentFor(null); setViewedAssessment(null); } }}>
+        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{tr("aiAssessment")} — {viewingAssessmentFor?.petName}</DialogTitle>
+            <DialogDescription>
+              {viewingAssessmentFor?.species}
+              {viewingAssessmentFor?.breed ? ` · ${viewingAssessmentFor.breed}` : ""}
+              {viewedAssessment?.created_at ? ` · ${new Date(viewedAssessment.created_at).toLocaleDateString()}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          {assessmentLoading && <p className="mt-4 text-sm text-accent-subtle">{tr("loadingData")}</p>}
+
+          {viewedAssessment && (
+            <div className="mt-4 space-y-4 text-sm">
+              <div className="flex items-center gap-3">
+                <Badge variant={riskBadge(viewedAssessment.risk_level)}>{levelLabel(viewedAssessment.risk_level)}</Badge>
+                <span className="text-accent-subtle">
+                  {tr("confidence")}: {Math.round((viewedAssessment.confidence_score ?? 0) * 100)}%
+                </span>
+              </div>
+
+              <div>
+                <p className="text-[12px] font-semibold uppercase tracking-wide text-accent-subtle">{tr("predictedConditions")}</p>
+                <div className="mt-2 space-y-1">
+                  {(viewedAssessment.predicted_diseases ?? []).map((d) => (
+                    <div key={d.disease} className="flex items-center justify-between">
+                      <span className="text-accent dark:text-white">{d.disease_localized || d.disease}</span>
+                      <span className="text-accent-subtle">{Math.round((d.probability ?? 0) * 100)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {viewedAssessment.payload && (
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-wide text-accent-subtle">{tr("ownerReported")}</p>
+                  <div className="mt-2 space-y-1 text-[13px] text-accent-subtle">
+                    <div>{tr("appetite")}: {viewedAssessment.payload.appetite_level || "—"}</div>
+                    <div>{tr("activity")}: {viewedAssessment.payload.activity_level || "—"}</div>
+                    <div>{tr("vomiting")}: {viewedAssessment.payload.vomiting_frequency || "—"}</div>
+                    <div>{tr("diarrhoea")}: {viewedAssessment.payload.diarrhea_level || "—"}</div>
+                    <div>{tr("urination")}: {viewedAssessment.payload.urine_frequency || "—"}</div>
+                    {(viewedAssessment.payload.symptoms ?? []).length > 0 && (
+                      <div>{tr("symptoms")}: {(viewedAssessment.payload.symptoms ?? []).join(", ")}</div>
+                    )}
+                    {viewedAssessment.payload.notes && <div className="italic">“{viewedAssessment.payload.notes}”</div>}
+                  </div>
+                </div>
+              )}
+
+              {(viewedAssessment.top_features ?? []).length > 0 && (
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-wide text-accent-subtle">{tr("influencingFactors")}</p>
+                  <div className="mt-2 space-y-1 text-[13px] text-accent-subtle">
+                    {(viewedAssessment.top_features ?? []).slice(0, 5).map((f, i) => (
+                      <div key={`${f.field ?? ""}-${f.feature}-${i}`}>
+                        {f.field ? `${f.field.replace(/_/g, " ")}: ${f.value ?? ""}` : f.feature}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(viewedAssessment.ontology_links ?? []).length > 0 && (
+                <details className="rounded-lg border border-border/60 p-3 dark:border-neutral-800">
+                  <summary className="cursor-pointer text-[12px] font-semibold uppercase tracking-wide text-accent-subtle">
+                    {tr("knowledgeBaseLinks")}
+                  </summary>
+                  <div className="mt-2 space-y-1 text-[13px] text-accent-subtle">
+                    {(viewedAssessment.ontology_links ?? []).slice(0, 6).map((l, i) => (
+                      <div key={`${l.symptom}-${l.disease}-${i}`}>
+                        {l.symptom_localized || l.symptom} → {l.disease_localized || l.disease}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+
+              <p className="border-t border-border/60 pt-3 text-[11px] text-accent-faint dark:border-neutral-800">
+                {viewedAssessment.disclaimer}
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
