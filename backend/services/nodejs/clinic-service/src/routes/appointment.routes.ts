@@ -38,6 +38,31 @@ async function releaseSlot(slotId: string | undefined) {
 }
 
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:4004";
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:4001";
+
+/**
+ * Look up owner display names for a set of appointments.
+ *
+ * Returns an empty map on failure so the appointment list still renders - a
+ * missing owner name is a presentation gap, not a reason to fail the request.
+ */
+async function resolveOwners(ids: string[]): Promise<Map<string, { name: string; phone: string }>> {
+  const result = new Map<string, { name: string; phone: string }>();
+  if (!ids.length) return result;
+  try {
+    const response = await fetch(`${AUTH_SERVICE_URL}/api/auth/users/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-service-key": SERVICE_KEY },
+      body: JSON.stringify({ ids }),
+    });
+    if (!response.ok) return result;
+    const body = await response.json() as { data?: Array<{ id: string; name: string; phone: string }> };
+    for (const row of body.data ?? []) result.set(row.id, { name: row.name, phone: row.phone });
+  } catch (err) {
+    console.warn("[clinic-service] owner name lookup failed", err);
+  }
+  return result;
+}
 
 /**
  * Tell the owner when their appointment changes.
@@ -98,7 +123,23 @@ appointmentRouter.get("/", async (req, res, next) => {
     if (user?.role === "owner") filter.ownerId = user.uid;
 
     const appointments = await AppointmentModel.find(filter).sort({ createdAt: -1 }).lean();
-    res.json({ success: true, data: appointments.map(mapAppointment) });
+    const rows = appointments.map(mapAppointment);
+
+    // Staff need to know who is bringing the animal. Resolved here rather than
+    // by the client so a vet only ever sees owners attached to appointments -
+    // there is no endpoint they could use to enumerate accounts.
+    if (user?.role === "vet" || user?.role === "admin") {
+      const owners = await resolveOwners([...new Set(rows.map((r) => r.ownerId).filter(Boolean))]);
+      for (const row of rows) {
+        const owner = owners.get(row.ownerId);
+        if (owner) {
+          (row as Record<string, unknown>).ownerName = owner.name;
+          (row as Record<string, unknown>).ownerPhone = owner.phone;
+        }
+      }
+    }
+
+    res.json({ success: true, data: rows });
   } catch (err) {
     next(err);
   }

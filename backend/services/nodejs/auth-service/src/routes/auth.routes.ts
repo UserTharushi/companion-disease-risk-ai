@@ -44,6 +44,39 @@ authRouter.get("/profile",          getProfile);
 authRouter.patch("/profile",        updateProfile);
 authRouter.post("/change-password", changePassword);
 
+/**
+ * POST /api/auth/users/resolve — service-to-service name lookup.
+ *
+ * clinic-service uses this to attach owner names to appointments so a
+ * veterinarian knows who is bringing the animal. Deliberately NOT exposed to
+ * vets directly: routing it through clinic-service means a vet only ever sees
+ * owners attached to their own appointments and cannot enumerate accounts.
+ * Returns display name and phone only - no email, address or date of birth.
+ */
+authRouter.post("/users/resolve", async (req, res) => {
+  const serviceKey = process.env.SERVICE_KEY || "internal-dev-key";
+  if (req.headers["x-service-key"] !== serviceKey) {
+    return res.status(403).json({ success: false, message: "Service key required" });
+  }
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).slice(0, 200) : [];
+  if (!ids.length) return res.json({ success: true, data: [] });
+  try {
+    const users = await UserModel.find({ _id: { $in: ids } })
+      .select("displayName phoneNumber")
+      .lean();
+    res.json({
+      success: true,
+      data: users.map((u) => ({
+        id: String(u._id),
+        name: u.displayName || "",
+        phone: u.phoneNumber || "",
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: (err as Error).message });
+  }
+});
+
 // Veterinarian directory, readable by any authenticated user. Owners need to
 // pick a vet to share a pet with, but must not see the admin roster: this
 // returns name and specialization only — no email, phone, address or DOB.

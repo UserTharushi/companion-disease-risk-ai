@@ -55,6 +55,10 @@ interface AppointmentRow {
   datetime: string | null;
   status: BackendAppointment["status"];
   notes?: string;
+  // Attached by clinic-service for staff callers so the vet knows who is
+  // bringing the animal; absent for owner callers.
+  ownerName?: string;
+  ownerPhone?: string;
 }
 
 interface PatientRow {
@@ -214,6 +218,8 @@ export function VeterinarianDashboardPage() {
           datetime: slotById.get(appt.slotId)?.datetime ?? null,
           status: appt.status,
           notes: appt.notes,
+          ownerName: (appt as { ownerName?: string }).ownerName,
+          ownerPhone: (appt as { ownerPhone?: string }).ownerPhone,
         })),
       );
 
@@ -550,6 +556,13 @@ export function VeterinarianDashboardPage() {
                 <p className="truncate text-[11px] text-accent-subtle">
                   <Clock className="mr-1 inline h-3 w-3" />{formatSlot(appt.datetime)} · {appt.clinicName} · {appt.surgeonName}
                 </p>
+                {/* Who is bringing the animal, and how to reach them. */}
+                {appt.ownerName ? (
+                  <p className="truncate text-[11px] text-accent-subtle">
+                    <User className="mr-1 inline h-3 w-3" />{tr("owner")}: {appt.ownerName}
+                    {appt.ownerPhone ? ` · ${appt.ownerPhone}` : ""}
+                  </p>
+                ) : null}
                 {appt.notes ? <p className="truncate text-[11px] text-accent-faint">{appt.notes}</p> : null}
               </div>
             </div>
