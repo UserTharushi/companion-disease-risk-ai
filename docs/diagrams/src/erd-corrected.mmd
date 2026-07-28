@@ -1,0 +1,176 @@
+%% Entity Relationship Diagram — Companion Disease Risk AI
+%% Based on the entity model in class diagram.png, with two corrections:
+%%   - VetProfile.rating removed (no review feature exists; the value was fabricated)
+%%   - PetAccessGrant added (relationship-based access control)
+%% Render at https://mermaid.live or with mermaid-cli.
+erDiagram
+    USER ||--o{ PET : "owns (role=owner)"
+    USER ||--o| VET_PROFILE : "is_vet_profile (role=vet)"
+    USER ||--o{ APPOINTMENT : books
+    USER ||--o{ NOTIFICATION : receives
+    USER ||--o{ CLINIC : "manages (role=admin)"
+    USER ||--o{ PET_ACCESS_GRANT : grants
+    USER ||--o{ VACCINATION_RECORD : "administers (role=vet)"
+
+    PET ||--o{ SYMPTOM_INPUT : has
+    PET ||--o{ VACCINATION_RECORD : has
+    PET ||--o{ APPOINTMENT : attends
+    PET ||--o{ PET_ACCESS_GRANT : "subject of"
+
+    SYMPTOM_INPUT ||--o| RISK_PREDICTION : generates
+    RISK_PREDICTION ||--|{ PREDICTION_DISEASE_RISK : includes
+    DISEASE ||--o{ PREDICTION_DISEASE_RISK : appears_in
+    VACCINE ||--o{ VACCINE_DISEASE : prevents
+    DISEASE ||--o{ VACCINE_DISEASE : prevented_target
+    VACCINE ||--o{ VACCINATION_RECORD : used_in
+
+    CLINIC ||--o{ VET_PROFILE : has
+    CLINIC ||--o{ TIME_SLOT : provides
+    VET_PROFILE ||--o{ TIME_SLOT : hosts
+    TIME_SLOT ||--o| APPOINTMENT : booked_for
+    APPOINTMENT ||--o| PET_ACCESS_GRANT : establishes
+
+    USER {
+        string uid PK
+        string email UK
+        string display_name
+        string phone_number
+        enum   role "owner, vet, admin"
+        enum   status "active, inactive"
+        string preferred_language "en, si, ta"
+        datetime created_at
+        datetime updated_at
+    }
+    PET {
+        string id PK
+        string owner_id FK
+        string name
+        enum   species "dog, cat"
+        string breed
+        int    age_years
+        decimal weight_kg
+        enum   sex "male, female"
+        boolean neutered
+        datetime created_at
+    }
+    SYMPTOM_INPUT {
+        string id PK
+        string pet_id FK
+        string appetite_level
+        string water_intake
+        string activity_level
+        string urine_frequency
+        string vomiting_frequency
+        string diarrhoea_level
+        int    symptom_duration_days
+        text   additional_notes
+        datetime submitted_at
+    }
+    RISK_PREDICTION {
+        string id PK
+        string pet_id FK
+        string symptom_input_id FK
+        enum   risk_level "low, medium, high"
+        decimal risk_score
+        decimal confidence_score
+        string urgency_action
+        text   explanation
+        string feedback_rating
+        string vet_diagnosis
+        string vet_id FK
+        datetime created_at
+    }
+    PREDICTION_DISEASE_RISK {
+        string id PK
+        string prediction_id FK
+        string disease_id FK
+        decimal probability
+        int    rank_order
+    }
+    DISEASE {
+        string id PK
+        string name
+        text   description
+        string severity
+        string created_by_admin_id FK
+    }
+    VACCINE {
+        string id PK
+        string name
+        string manufacturer
+        string dose_schedule
+        string created_by_admin_id FK
+    }
+    VACCINE_DISEASE {
+        string id PK
+        string vaccine_id FK
+        string disease_id FK
+    }
+    VACCINATION_RECORD {
+        string id PK
+        string pet_id FK
+        string vaccine_id FK
+        string administered_by_vet_id FK
+        datetime administered_at
+        datetime next_due_at
+        string batch_number
+        text   notes
+    }
+    CLINIC {
+        string id PK
+        string name
+        string address
+        string phone
+        string email
+        decimal latitude
+        decimal longitude
+        boolean is_open
+        string managed_by_admin_id FK
+    }
+    VET_PROFILE {
+        string id PK
+        string user_id FK
+        string clinic_id FK
+        string doctor_registration_number
+        string specialization
+        text   qualifications
+        string created_by_admin_id FK
+    }
+    TIME_SLOT {
+        string id PK
+        string vet_user_id FK
+        string clinic_id FK
+        datetime slot_datetime
+        int    duration_mins
+        boolean is_booked
+    }
+    APPOINTMENT {
+        string id PK
+        string owner_id FK
+        string pet_id FK
+        string clinic_id FK
+        string vet_user_id FK
+        string slot_id FK
+        enum   status "pending, confirmed, cancelled, completed"
+        text   notes
+        datetime created_at
+    }
+    PET_ACCESS_GRANT {
+        string id PK
+        string pet_id FK
+        string owner_id FK
+        string vet_user_id FK
+        enum   source "appointment, owner_consent"
+        string appointment_id FK
+        datetime granted_at
+        datetime revoked_at
+    }
+    NOTIFICATION {
+        string id PK
+        string user_id FK
+        enum   type "risk_alert, vaccination_due, appointment_reminder, follow_up"
+        string title
+        text   body
+        boolean is_read
+        datetime created_at
+    }
