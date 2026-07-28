@@ -15,6 +15,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
 import { Separator } from "../components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { Dropzone } from "../components/ui/dropzone";
 import { ThemeSwitcher } from "../components/ThemeSwitcher";
@@ -373,6 +374,14 @@ export function PetOwnerDashboardPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>(() => loadJson(appointmentsStorageKey, []));
   const [bookingPetByClinic, setBookingPetByClinic] = useState<Record<string, string>>({});
+  const [pendingBooking, setPendingBooking] = useState<{
+    clinic: ClinicDirectoryRecord;
+    surgeon: ClinicDirectoryRecord["surgeons"][number];
+    slot: string;
+    slotId: string;
+    petId: string;
+    petName: string;
+  } | null>(null);
   const [rescheduleSlotByAppointment, setRescheduleSlotByAppointment] = useState<Record<string, string>>({});
   const [inquiryBySurgeon, setInquiryBySurgeon] = useState<Record<string, string>>({});
   const [surgeonInquiries, setSurgeonInquiries] = useState<SurgeonInquiryRecord[]>(() => loadJson(inquiriesStorageKey, []));
@@ -703,11 +712,39 @@ export function PetOwnerDashboardPage() {
   }
   function handleLogout() { logout(); navigate("/auth/login", { replace: true }); }
   function isSlotBooked(clinicId: string, surgeonId: string, slot: string) { return appointments.some((a) => a.status !== "cancelled" && a.clinicId === clinicId && a.surgeonId === surgeonId && a.slot === slot); }
-  function handleBookAppointment(clinic: ClinicDirectoryRecord, surgeon: ClinicDirectoryRecord["surgeons"][number], slot: string) {
-    const petId = bookingPetByClinic[clinic.id] || pets[0]?.id; const pet = pets.find((p) => p.id === petId);
-    if (!pet) { toast({ title: tr("addPetFirst"), variant: "error" }); return; } if (isSlotBooked(clinic.id, surgeon.id, slot)) { toast({ title: tr("slotTaken"), variant: "error" }); return; }
+  /**
+   * Tapping a slot used to create the appointment immediately - no review, no
+   * confirmation. With more than one pet it silently booked whichever happened
+   * to be first in the list, so an owner could commit the wrong animal to a
+   * real appointment with a single accidental tap. This now opens a
+   * confirmation showing exactly what is about to be booked.
+   */
+  function requestBooking(clinic: ClinicDirectoryRecord, surgeon: ClinicDirectoryRecord["surgeons"][number], slot: string) {
+    const petId = bookingPetByClinic[clinic.id] || pets[0]?.id;
+    const pet = pets.find((p) => p.id === petId);
+    if (!pet) { toast({ title: tr("addPetFirst"), variant: "error" }); return; }
+    if (isSlotBooked(clinic.id, surgeon.id, slot)) { toast({ title: tr("slotTaken"), variant: "error" }); return; }
     const slotId = resolveSlotIdFromLookup(slotLookup, clinic.id, surgeon.id, slot);
     if (!slotId) { toast({ title: tr("slotUnavailable"), description: tr("reloadClinicsRetry"), variant: "error" }); return; }
+    setPendingBooking({ clinic, surgeon, slot, slotId, petId: pet.id, petName: pet.name });
+  }
+
+  function confirmPendingBooking() {
+    if (!pendingBooking) return;
+    const { clinic, surgeon, slot, slotId, petId, petName } = pendingBooking;
+    setPendingBooking(null);
+    handleBookAppointment(clinic, surgeon, slot, slotId, petId, petName);
+  }
+
+  function handleBookAppointment(
+    clinic: ClinicDirectoryRecord,
+    surgeon: ClinicDirectoryRecord["surgeons"][number],
+    slot: string,
+    slotId: string,
+    petId: string,
+    petName: string,
+  ) {
+    const pet = { id: petId, name: petName };
 
     createAppointment({
       ownerId,
@@ -1617,7 +1654,7 @@ export function PetOwnerDashboardPage() {
                               <div className="mt-2 flex flex-wrap gap-1.5">
                                 {surgeon.availableSlots.length === 0 ? <span className="text-[11px] text-accent-faint">{tr("noSlots")}</span> : surgeon.availableSlots.map((slot) => {
                                   const booked = isSlotBooked(clinic.id, surgeon.id, slot);
-                                  return <button key={slot} onClick={() => handleBookAppointment(clinic, surgeon, slot)} disabled={booked} className={cn("inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition", booked ? "bg-surface-tertiary text-accent-faint cursor-not-allowed dark:bg-neutral-800 dark:text-accent-muted" : "bg-primary text-primary-fg hover:bg-primary-hover")}><Clock className="h-3 w-3" />{slot}</button>;
+                                  return <button key={slot} onClick={() => requestBooking(clinic, surgeon, slot)} disabled={booked} className={cn("inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition", booked ? "bg-surface-tertiary text-accent-faint cursor-not-allowed dark:bg-neutral-800 dark:text-accent-muted" : "bg-primary text-primary-fg hover:bg-primary-hover")}><Clock className="h-3 w-3" />{slot}</button>;
                                 })}
                               </div>
                               <div className="mt-2 flex gap-2"><Input value={inquiryBySurgeon[`${clinic.id}_${surgeon.id}`] || ""} onChange={(e) => setInquiryBySurgeon((p) => ({ ...p, [`${clinic.id}_${surgeon.id}`]: e.target.value }))} placeholder={tr("sendInquiryPlaceholder")} className="h-7 flex-1 text-xs" /><Button size="sm" variant="secondary" onClick={() => handleSendInquiry(clinic, surgeon)}><Send className="h-3 w-3" /></Button></div>
@@ -1725,6 +1762,45 @@ export function PetOwnerDashboardPage() {
           </div>
         </main>
       </div>
+
+      {/* Booking confirmation. Shows exactly which pet is being committed,
+          since the pet defaults to the first in the list when not chosen. */}
+      <Dialog open={Boolean(pendingBooking)} onOpenChange={(open) => { if (!open) setPendingBooking(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tr("confirmBookingTitle")}</DialogTitle>
+            <DialogDescription>{tr("confirmBookingIntro")}</DialogDescription>
+          </DialogHeader>
+
+          {pendingBooking && (
+            <div className="mt-4 space-y-2 rounded-lg border border-border/70 p-3 text-sm dark:border-neutral-800">
+              <div className="flex justify-between gap-3">
+                <span className="text-accent-subtle">{tr("navPets")}</span>
+                <span className="font-medium text-accent dark:text-white">{pendingBooking.petName}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-accent-subtle">{tr("clinic")}</span>
+                <span className="text-right font-medium text-accent dark:text-white">{pendingBooking.clinic.name}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-accent-subtle">{tr("veterinarian")}</span>
+                <span className="text-right font-medium text-accent dark:text-white">{pendingBooking.surgeon.name}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-accent-subtle">{tr("dateTime")}</span>
+                <span className="font-medium text-accent dark:text-white">{pendingBooking.slot}</span>
+              </div>
+            </div>
+          )}
+
+          <p className="mt-3 text-[12px] text-accent-faint">{tr("bookingPendingNote")}</p>
+
+          <div className="mt-4 flex gap-2">
+            <Button className="flex-1" onClick={confirmPendingBooking}>{tr("confirmBooking")}</Button>
+            <Button className="flex-1" variant="secondary" onClick={() => setPendingBooking(null)}>{tr("cancel")}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
