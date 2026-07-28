@@ -30,7 +30,7 @@ import {
   updateOwnerPet,
   type BackendPet,
 } from "../lib/pet-api";
-import { createAppointment, listAppointments, listClinics, listNearbyClinics, updateAppointment, listInquiries, createInquiry, type NearbyClinic } from "../lib/clinic-api";
+import { cancelAppointment, createAppointment, listAppointments, listClinics, listNearbyClinics, updateAppointment, listInquiries, createInquiry, type NearbyClinic } from "../lib/clinic-api";
 import { getPredictionHistory, type PredictionHistoryItem } from "../lib/prediction-api";
 import { listUpcomingVaccinations } from "../lib/vaccination-api";
 import { listAnnouncements, type Announcement } from "../lib/admin-api";
@@ -729,23 +729,17 @@ export function PetOwnerDashboardPage() {
         toast({ title: tr("failedBookAppointment"), description: error instanceof Error ? error.message : "Unable to create booking", variant: "error" });
       });
   }
+  // Cancelling removes the booking rather than leaving a cancelled row in the
+  // list. The slot is released and the appointment-based access grant revoked
+  // server-side when no other live appointment links this pet to that vet.
   function handleCancelAppointment(id: string) {
-    const current = appointments.find((appointment) => appointment.id === id);
-    updateAppointment(id, { status: "cancelled" })
-      .then((updated) => {
-        const mapped = mapAppointmentFromBackend(
-          updated,
-          clinics,
-          slotLookup,
-          current?.petName || updated.petId,
-          current?.ownerName || profile.displayName.trim() || fallbackName,
-          current?.ownerPhone || profile.phone.trim() || undefined,
-        );
-        setAppointments((prev) => prev.map((a) => (a.id === id ? mapped : a)));
+    cancelAppointment(id)
+      .then(() => {
+        setAppointments((prev) => prev.filter((a) => a.id !== id));
         toast({ title: tr("appointmentCancelled") });
       })
       .catch((error: unknown) => {
-        toast({ title: tr("failedCancelAppointment"), description: error instanceof Error ? error.message : "Unable to update appointment", variant: "error" });
+        toast({ title: tr("failedCancelAppointment"), description: error instanceof Error ? error.message : "Unable to cancel appointment", variant: "error" });
       });
   }
   function handleRescheduleAppointment(appt: AppointmentRecord) {

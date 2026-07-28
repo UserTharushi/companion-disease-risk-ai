@@ -1,5 +1,5 @@
 import { Router, type Request } from "express";
-import { AppointmentModel, PetAccessGrantModel, TimeSlotModel, grantAccessForAppointment } from "../models/clinic.models";
+import { AppointmentModel, PetAccessGrantModel, SurgeonModel, TimeSlotModel, grantAccessForAppointment } from "../models/clinic.models";
 
 const SERVICE_KEY = process.env.SERVICE_KEY || "internal-dev-key";
 
@@ -173,6 +173,52 @@ appointmentRouter.delete("/pet/:petId", async (req, res, next) => {
         grantsRevoked: grants.deletedCount ?? 0,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /api/appointments/:appointmentId — withdraw a booking outright.
+ *
+ * An owner cancelling their own booking does not want a cancelled row left in
+ * their list; the booking simply should not be there. Releases the slot, then
+ * revokes the appointment-based access grant unless the pet still has another
+ * live appointment with that same veterinarian - otherwise booking, gaining
+ * access and immediately cancelling would leave the vet with permanent access
+ * to the animal's records.
+ */
+appointmentRouter.delete("/:appointmentId", async (req, res, next) => {
+  try {
+    const appointment = await AppointmentModel.findById(req.params.appointmentId);
+    if (!appointment) return res.status(404).json({ success: false, message: "Appointment not found" });
+
+    const user = identity(req);
+    if (user?.role === "owner" && appointment.ownerId !== user.uid) {
+      return res.status(403).json({ success: false, message: "You can only cancel your own appointments" });
+    }
+
+    await releaseSlot(appointment.slotId);
+    await AppointmentModel.findByIdAndDelete(appointment._id);
+
+    const surgeon = await SurgeonModel.findById(appointment.surgeonId).lean();
+    const vetUserId = (surgeon as { userId?: string } | null)?.userId;
+    if (vetUserId) {
+      const stillBooked = await AppointmentModel.countDocuments({
+        petId: appointment.petId,
+        surgeonId: appointment.surgeonId,
+        status: { $ne: "cancelled" },
+      });
+      if (stillBooked === 0) {
+        await PetAccessGrantModel.deleteMany({
+          petId: appointment.petId,
+          vetUserId,
+          source: "appointment",
+        });
+      }
+    }
+
+    res.json({ success: true, message: "Appointment cancelled" });
   } catch (err) {
     next(err);
   }

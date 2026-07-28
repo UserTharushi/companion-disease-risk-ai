@@ -89,6 +89,21 @@ export async function addSurgeon(
  * auth account, so the doctor patients book with is the same entity as the
  * user who logs in and records diagnoses.
  */
+/**
+ * Withdraw a booking entirely rather than leaving a cancelled row behind.
+ * Releases the slot and revokes the appointment-based access grant when the pet
+ * has no other live appointment with that veterinarian.
+ */
+export async function cancelAppointment(appointmentId: string): Promise<void> {
+  const token = getAccessToken();
+  const response = await fetch(`${API_BASE_URL}/api/appointments/${encodeURIComponent(appointmentId)}`, {
+    method: "DELETE",
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  const data = await response.json();
+  if (!response.ok || !data.success) throw new Error(data.message || "Could not cancel appointment");
+}
+
 export async function updateSurgeon(
   surgeonId: string,
   payload: { name?: string; specialization?: string; userId?: string | null },
