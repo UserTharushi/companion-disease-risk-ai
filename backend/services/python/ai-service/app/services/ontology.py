@@ -66,7 +66,20 @@ def apply_schema() -> bool:
     except Exception as ex:
         logger.warning("Neo4j unavailable, ontology enrichment disabled: %s", ex)
         _available = False
+        # Discard the cached driver so a retry builds a fresh connection rather
+        # than reusing one created before Neo4j was accepting connections.
+        _reset_driver()
         return False
+
+
+def _reset_driver() -> None:
+    global _driver
+    if _driver is not None:
+        try:
+            _driver.close()
+        except Exception:
+            pass
+        _driver = None
 
 
 def is_available() -> bool:
