@@ -64,6 +64,7 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  MapPin,
   Sparkles,
   Stethoscope,
   Trash2,
@@ -244,6 +245,7 @@ export function AdminDashboardPage() {
   const [editingSurgeonDraft, setEditingSurgeonDraft] = useState({ name: "", specialization: "" });
   const [slotDraftBySurgeon, setSlotDraftBySurgeon] = useState<Record<string, string>>({});
   const [savingClinic, setSavingClinic] = useState(false);
+  const [locatingClinic, setLocatingClinic] = useState(false);
 
   // ── Admin profile ──
   const [adminProfile, setAdminProfile] = useState<AdminProfile>(() => {
@@ -408,6 +410,40 @@ export function AdminDashboardPage() {
     } catch {
       toast({ title: tr("actionFailed"), variant: "error" });
     }
+  }
+
+  /**
+   * Fill the latitude/longitude fields from the device's own position.
+   *
+   * The form previously showed bare Colombo coordinates as placeholders, which
+   * were copied in verbatim - putting a Kurunegala clinic 93 km from where it
+   * actually is, and outside the nearby-search radius. A clinic administrator
+   * registering their own premises is almost always standing in them.
+   */
+  function fillCoordsFromDevice(target: "create" | "edit") {
+    if (!navigator.geolocation) {
+      toast({ title: tr("locationUnavailable"), variant: "error" });
+      return;
+    }
+    setLocatingClinic(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude.toFixed(6);
+        const lng = position.coords.longitude.toFixed(6);
+        if (target === "create") {
+          setClinicDraft((d) => ({ ...d, latitude: lat, longitude: lng }));
+        } else {
+          setEditingClinicDraft((d) => ({ ...d, latitude: lat, longitude: lng }));
+        }
+        setLocatingClinic(false);
+        toast({ title: tr("locationCaptured"), description: `${lat}, ${lng}`, variant: "success" });
+      },
+      () => {
+        setLocatingClinic(false);
+        toast({ title: tr("locationDenied"), variant: "error" });
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
   }
 
   // ── Clinic management (live API) ──
@@ -1154,8 +1190,18 @@ export function AdminDashboardPage() {
                       <div><Label className="text-[11px]">{tr("email")}</Label><input className={cn(inputClass, "mt-1")} value={clinicDraft.email} onChange={(e) => setClinicDraft((d) => ({ ...d, email: e.target.value }))} /></div>
                       <div><Label className="text-[11px]">{tr("specialization")}</Label><input className={cn(inputClass, "mt-1")} placeholder="General, Dermatology, ..." value={clinicDraft.specializations} onChange={(e) => setClinicDraft((d) => ({ ...d, specializations: e.target.value }))} /></div>
                       <div className="grid grid-cols-2 gap-2">
-                        <div><Label className="text-[11px]">Lat</Label><input className={cn(inputClass, "mt-1")} placeholder="6.9271" value={clinicDraft.latitude} onChange={(e) => setClinicDraft((d) => ({ ...d, latitude: e.target.value }))} /></div>
-                        <div><Label className="text-[11px]">Lng</Label><input className={cn(inputClass, "mt-1")} placeholder="79.8612" value={clinicDraft.longitude} onChange={(e) => setClinicDraft((d) => ({ ...d, longitude: e.target.value }))} /></div>
+                        {/* Placeholders are marked as examples: they previously
+                            showed bare Colombo coordinates, which were copied in
+                            verbatim and put a Kurunegala clinic 93 km away. */}
+                        <div><Label className="text-[11px]">{tr("latitude")}</Label><input className={cn(inputClass, "mt-1")} placeholder="e.g. 7.4863" value={clinicDraft.latitude} onChange={(e) => setClinicDraft((d) => ({ ...d, latitude: e.target.value }))} /></div>
+                        <div><Label className="text-[11px]">{tr("longitude")}</Label><input className={cn(inputClass, "mt-1")} placeholder="e.g. 80.3647" value={clinicDraft.longitude} onChange={(e) => setClinicDraft((d) => ({ ...d, longitude: e.target.value }))} /></div>
+                      </div>
+                      <div className="col-span-full">
+                        <Button size="sm" variant="secondary" onClick={() => fillCoordsFromDevice("create")} disabled={locatingClinic}>
+                          <MapPin className="h-3 w-3" />
+                          {locatingClinic ? tr("locating") : tr("useMyLocation")}
+                        </Button>
+                        <p className="mt-1 text-[11px] text-accent-faint">{tr("coordsMustMatchAddress")}</p>
                       </div>
                     </div>
                     <Button className="mt-3" onClick={handleCreateClinic} disabled={savingClinic}>{savingClinic ? "..." : tr("save")}</Button>
@@ -1179,6 +1225,11 @@ export function AdminDashboardPage() {
                             <div><Label className="text-[11px]">{tr("phone")}</Label><input className={cn(inputClass, "mt-1")} value={editingClinicDraft.phone} onChange={(e) => setEditingClinicDraft((d) => ({ ...d, phone: e.target.value }))} /></div>
                             <div><Label className="text-[11px]">{tr("email")}</Label><input className={cn(inputClass, "mt-1")} value={editingClinicDraft.email} onChange={(e) => setEditingClinicDraft((d) => ({ ...d, email: e.target.value }))} /></div>
                             <div><Label className="text-[11px]">{tr("specialization")}</Label><input className={cn(inputClass, "mt-1")} value={editingClinicDraft.specializations} onChange={(e) => setEditingClinicDraft((d) => ({ ...d, specializations: e.target.value }))} /></div>
+                            {/* Coordinates were not editable at all, so a clinic
+                                saved at the wrong position could never be
+                                corrected through the interface. */}
+                            <div><Label className="text-[11px]">{tr("latitude")}</Label><input className={cn(inputClass, "mt-1")} placeholder="e.g. 7.4863" value={editingClinicDraft.latitude} onChange={(e) => setEditingClinicDraft((d) => ({ ...d, latitude: e.target.value }))} /></div>
+                            <div><Label className="text-[11px]">{tr("longitude")}</Label><input className={cn(inputClass, "mt-1")} placeholder="e.g. 80.3647" value={editingClinicDraft.longitude} onChange={(e) => setEditingClinicDraft((d) => ({ ...d, longitude: e.target.value }))} /></div>
                             <div className="flex items-end gap-2 pb-0.5">
                               <label className="flex items-center gap-2 text-[13px] text-accent">
                                 <input type="checkbox" className="h-4 w-4" checked={editingClinicDraft.isOpen} onChange={(e) => setEditingClinicDraft((d) => ({ ...d, isOpen: e.target.checked }))} />
@@ -1186,9 +1237,13 @@ export function AdminDashboardPage() {
                               </label>
                             </div>
                           </div>
-                          <div className="mt-3 flex gap-2">
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
                             <Button size="sm" onClick={saveClinicEdit} disabled={savingClinic}><Check className="h-3.5 w-3.5" />{tr("save")}</Button>
                             <Button size="sm" variant="secondary" onClick={() => setEditingClinicId(null)}><X className="h-3.5 w-3.5" />{tr("cancel")}</Button>
+                            <Button size="sm" variant="secondary" onClick={() => fillCoordsFromDevice("edit")} disabled={locatingClinic}>
+                              <MapPin className="h-3 w-3" />
+                              {locatingClinic ? tr("locating") : tr("useMyLocation")}
+                            </Button>
                           </div>
                         </div>
                       ) : (
