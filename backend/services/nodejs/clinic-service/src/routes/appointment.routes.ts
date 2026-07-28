@@ -35,6 +35,43 @@ async function releaseSlot(slotId: string | undefined) {
   await slot.save();
 }
 
+const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:4004";
+
+/**
+ * Tell the owner when their appointment changes.
+ *
+ * Cancelling or moving a booking previously updated the record and released the
+ * slot but told nobody, so an owner whose vet became unavailable would still
+ * travel to the clinic. Fire-and-forget: notification failure must never fail
+ * the appointment change itself.
+ */
+async function notifyOwner(params: {
+  ownerId: string;
+  appointmentId: string;
+  type: "appointment_cancelled" | "appointment_rescheduled";
+  title: string;
+  body: string;
+}) {
+  if (!params.ownerId) return;
+  try {
+    await fetch(`${NOTIFICATION_SERVICE_URL}/api/notifications`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: params.ownerId,
+        type: params.type,
+        title: params.title,
+        body: params.body,
+        urgency: "high",
+        // One notice per appointment per transition, so a retry cannot spam.
+        dedupeKey: `${params.type}:${params.appointmentId}`,
+      }),
+    });
+  } catch (err) {
+    console.warn("[clinic-service] owner notification failed", err);
+  }
+}
+
 async function bookSlot(slotId: string) {
   const slot = await TimeSlotModel.findById(slotId);
   if (!slot) {
@@ -111,6 +148,7 @@ appointmentRouter.patch("/:appointmentId", async (req, res, next) => {
       return res.status(403).json({ success: false, message: "You can only modify your own appointments" });
     }
 
+    const previousStatus = appointment.status;
     const nextSlotId = req.body.slotId ? String(req.body.slotId) : appointment.slotId;
     const nextStatus = req.body.status || appointment.status;
     const slotChanged = nextSlotId !== appointment.slotId;
@@ -143,6 +181,28 @@ appointmentRouter.patch("/:appointmentId", async (req, res, next) => {
     if (req.body.notes !== undefined) appointment.notes = String(req.body.notes);
 
     await appointment.save();
+
+    // Notify only when someone other than the owner made the change - an owner
+    // cancelling their own booking does not need telling.
+    const changedByStaff = user?.role === "vet" || user?.role === "admin";
+    if (changedByStaff && nextStatus === "cancelled" && previousStatus !== "cancelled") {
+      await notifyOwner({
+        ownerId: appointment.ownerId,
+        appointmentId: String(appointment._id),
+        type: "appointment_cancelled",
+        title: "Appointment cancelled",
+        body: "Your veterinary appointment has been cancelled by the clinic. Please book another time slot.",
+      });
+    } else if (changedByStaff && slotChanged) {
+      await notifyOwner({
+        ownerId: appointment.ownerId,
+        appointmentId: String(appointment._id),
+        type: "appointment_rescheduled",
+        title: "Appointment rescheduled",
+        body: "Your veterinary appointment has been moved by the clinic. Please check the new time in your appointments.",
+      });
+    }
+
     res.json({ success: true, data: mapAppointment(appointment.toObject()) });
   } catch (err) {
     next(err);

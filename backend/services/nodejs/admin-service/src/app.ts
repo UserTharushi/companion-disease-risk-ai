@@ -3,7 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import mongoose from "mongoose";
-import { approvalRouter, auditRouter, ticketRouter } from "./routes/admin.routes";
+import { announcementRouter, approvalRouter, auditRouter, ticketRouter } from "./routes/admin.routes";
 
 const app = express();
 app.use(helmet());
@@ -44,6 +44,7 @@ app.get("/health", (_req, res) => res.json({ status: "ok", service: "admin-servi
 app.use("/api/approvals", approvalRouter);
 app.use("/api/tickets", ticketRouter);
 app.use("/api/audit", auditRouter);
+app.use("/api/announcements", announcementRouter);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error("[admin-service]", err);

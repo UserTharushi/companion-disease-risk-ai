@@ -8,7 +8,7 @@ import { ClinicDetailsPage, PetProfilePage } from "./PetOwnerFlowPages";
 import {
   Home, PawPrint, Brain, MapPin, User, LogOut, Plus, Trash2, Save,
   Send, AlertTriangle, Calendar, Clock, ChevronRight, X, Menu, Pencil,
-  Activity, Syringe, TrendingUp, ArrowRight, Sparkles, Info,
+  Activity, Syringe, TrendingUp, ArrowRight, Sparkles, Info, Megaphone,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -33,6 +33,7 @@ import {
 import { createAppointment, listAppointments, listClinics, listNearbyClinics, updateAppointment, listInquiries, createInquiry, type NearbyClinic } from "../lib/clinic-api";
 import { getPredictionHistory, type PredictionHistoryItem } from "../lib/prediction-api";
 import { listUpcomingVaccinations } from "../lib/vaccination-api";
+import { listAnnouncements, type Announcement } from "../lib/admin-api";
 import { sendChatMessage } from "../lib/agent-api";
 import type { Appointment as BackendAppointment, VetClinic } from "@companion-ai/shared-types";
 
@@ -42,6 +43,7 @@ const PET_OWNER_PETS_KEY = "companion_ai_pet_owner_pets";
 const PET_OWNER_PROFILE_KEY = "companion_ai_pet_owner_profile";
 const PET_OWNER_APPOINTMENTS_KEY = "companion_ai_pet_owner_appointments";
 const PET_OWNER_SURGEON_INQUIRIES_KEY = "companion_ai_pet_owner_surgeon_inquiries";
+const DISMISSED_ANNOUNCEMENTS_KEY = "companion_ai_dismissed_announcements";
 
 // ── Types ──
 interface ClinicDirectoryRecord {
@@ -298,6 +300,30 @@ export function PetOwnerDashboardPage() {
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pets.length, language]);
+  // Platform announcements published by an administrator for pet owners.
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [dismissedAnnouncements, setDismissedAnnouncements] = useState<string[]>(
+    () => loadJson<string[]>(DISMISSED_ANNOUNCEMENTS_KEY, []),
+  );
+
+  useEffect(() => {
+    let active = true;
+    listAnnouncements()
+      .then((rows) => { if (active) setAnnouncements(rows); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  // Dismissal is presentational only, so it lives in the browser rather than
+  // creating a per-user row for every announcement on the server.
+  function dismissAnnouncement(id: string) {
+    const next = [...dismissedAnnouncements, id];
+    setDismissedAnnouncements(next);
+    localStorage.setItem(DISMISSED_ANNOUNCEMENTS_KEY, JSON.stringify(next));
+  }
+
+  const visibleAnnouncements = announcements.filter((a) => !dismissedAnnouncements.includes(a.id));
+
   // Soonest upcoming vaccination across the owner's pets, or null when none is
   // due. This banner used to render a hardcoded "due in 3 days" for everyone,
   // including owners with no vaccination records at all.
@@ -1094,6 +1120,47 @@ export function PetOwnerDashboardPage() {
                         </button>
                       ))}
                     </div>
+
+                    {/* Announcements published by an administrator */}
+                    {visibleAnnouncements.map((a) => (
+                      <div
+                        key={a.id}
+                        className={cn(
+                          "mt-4 w-full max-w-[560px] rounded-xl border px-4 py-3",
+                          a.severity === "warning"
+                            ? "border-red-200/60 bg-red-50/60"
+                            : "border-sky-200/60 bg-sky-50/60",
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3">
+                            <div className={cn(
+                              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                              a.severity === "warning" ? "bg-red-100" : "bg-sky-100",
+                            )}>
+                              <Megaphone className={cn("h-4 w-4", a.severity === "warning" ? "text-red-600" : "text-sky-600")} />
+                            </div>
+                            <div>
+                              <p className={cn(
+                                "text-[13px] font-medium",
+                                a.severity === "warning" ? "text-red-900" : "text-sky-900",
+                              )}>{a.title}</p>
+                              <p className={cn(
+                                "text-[12px]",
+                                a.severity === "warning" ? "text-red-700/80" : "text-sky-700/80",
+                              )}>{a.body}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => dismissAnnouncement(a.id)}
+                            className="shrink-0 rounded-md p-1 text-accent-faint transition hover:bg-white/60 hover:text-accent"
+                            aria-label="Dismiss"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
 
                     {/* Vaccination banner — only when a record is actually due */}
                     {dueVaccination ? (

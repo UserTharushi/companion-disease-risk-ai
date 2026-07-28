@@ -79,6 +79,7 @@ app.use("/api/vaccinations", proxyTo(VACCINATION_URL));
 app.use("/api/approvals",    proxyTo(ADMIN_URL));
 app.use("/api/tickets",      proxyTo(ADMIN_URL));
 app.use("/api/audit",        proxyTo(ADMIN_URL));
+app.use("/api/announcements", proxyTo(ADMIN_URL));
 // AI service serves /predict without the /api prefix
 app.use("/api/predict", proxy(AI_URL, { ...PROXY_OPTS, proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api\/predict/, "/predict") }));
 // Compatibility: frontends call /api/predictions -> AI service serves /predictions/*

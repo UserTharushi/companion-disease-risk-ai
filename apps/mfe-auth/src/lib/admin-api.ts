@@ -95,6 +95,42 @@ export async function updateTicketStatus(id: string, status: Ticket["status"]): 
   });
 }
 
+/**
+ * Platform announcements. Readable by any authenticated user (each sees only
+ * those addressed to their role); created and withdrawn by admins.
+ */
+export type Announcement = {
+  id: string;
+  title: string;
+  body: string;
+  audience: "all" | "owner" | "vet";
+  severity: "info" | "warning";
+  active: boolean;
+  publishedAt: string;
+  expiresAt?: string;
+};
+
+export async function listAnnouncements(includeInactive = false): Promise<Announcement[]> {
+  return request<Announcement[]>(`/api/announcements${includeInactive ? "?all=true" : ""}`);
+}
+
+export async function createAnnouncement(input: {
+  title?: string;
+  body: string;
+  audience?: Announcement["audience"];
+  severity?: Announcement["severity"];
+}): Promise<Announcement> {
+  return request<Announcement>("/api/announcements", { method: "POST", body: JSON.stringify(input) });
+}
+
+/** Withdraw rather than delete, so the publication record survives. */
+export async function setAnnouncementActive(id: string, active: boolean): Promise<Announcement> {
+  return request<Announcement>(`/api/announcements/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ active }),
+  });
+}
+
 export async function listAudit(limit = 50): Promise<AuditEntry[]> {
   return request<AuditEntry[]>(`/api/audit?limit=${limit}`);
 }

@@ -24,12 +24,16 @@ import {
 import { getFeedbackSummary, getModelInfo, type FeedbackSummary } from "../lib/prediction-api";
 import { sendNotification } from "../lib/notification-api";
 import {
+  createAnnouncement,
   decideApproval,
+  listAnnouncements,
   listApprovals,
   listAudit,
   listTickets,
   recordAudit,
+  setAnnouncementActive,
   updateTicketStatus,
+  type Announcement,
   type ApprovalItem,
   type AuditEntry,
   type Ticket,
@@ -181,6 +185,15 @@ export function AdminDashboardPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
 
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+
+  const refreshAnnouncements = useCallback(async () => {
+    const rows = await listAnnouncements(true).catch(() => [] as Announcement[]);
+    setAnnouncements(rows);
+  }, []);
+
+  useEffect(() => { void refreshAnnouncements(); }, [refreshAnnouncements]);
+
   const refreshAdminQueues = useCallback(async () => {
     const [nextApprovals, nextTickets, nextAudit] = await Promise.all([
       listApprovals().catch(() => [] as ApprovalItem[]),
@@ -227,6 +240,8 @@ export function AdminDashboardPage() {
   const [editingClinicId, setEditingClinicId] = useState<string | null>(null);
   const [editingClinicDraft, setEditingClinicDraft] = useState<ClinicDraft & { isOpen: boolean }>({ ...EMPTY_CLINIC_DRAFT, isOpen: true });
   const [surgeonDraftByClinic, setSurgeonDraftByClinic] = useState<Record<string, { name: string; specialization: string; userId: string }>>({});
+  const [editingSurgeonId, setEditingSurgeonId] = useState<string | null>(null);
+  const [editingSurgeonDraft, setEditingSurgeonDraft] = useState({ name: "", specialization: "" });
   const [slotDraftBySurgeon, setSlotDraftBySurgeon] = useState<Record<string, string>>({});
   const [savingClinic, setSavingClinic] = useState(false);
 
@@ -368,11 +383,31 @@ export function AdminDashboardPage() {
     }
   }
 
-  function handleBroadcastSend() {
-    if (!broadcastMessage.trim()) return;
-    audit(tr("broadcastNotice"), broadcastMessage.trim().slice(0, 60));
-    setBroadcastMessage("");
-    toast({ title: tr("broadcastSent"), variant: "success" });
+  // Previously this only wrote an audit entry and showed a success toast - the
+  // message was never transmitted to anyone. It now publishes a real
+  // announcement that owners see on their dashboard.
+  async function handleBroadcastSend() {
+    const body = broadcastMessage.trim();
+    if (!body) return;
+    try {
+      await createAnnouncement({ body, audience: "owner", severity: "info" });
+      audit(tr("broadcastNotice"), body.slice(0, 60));
+      setBroadcastMessage("");
+      await refreshAnnouncements();
+      toast({ title: tr("broadcastSent"), variant: "success" });
+    } catch (err) {
+      toast({ title: (err as Error).message || tr("actionFailed"), variant: "error" });
+    }
+  }
+
+  async function handleWithdrawAnnouncement(id: string, title: string) {
+    try {
+      await setAnnouncementActive(id, false);
+      audit(tr("withdrawAnnouncement"), title);
+      await refreshAnnouncements();
+    } catch {
+      toast({ title: tr("actionFailed"), variant: "error" });
+    }
   }
 
   // ── Clinic management (live API) ──
@@ -471,6 +506,25 @@ export function AdminDashboardPage() {
       audit(tr("addSurgeonAction"), `${draft.name.trim()} → ${clinic.name}`);
       toast({ title: tr("surgeonAdded"), variant: "success" });
       setSurgeonDraftByClinic((prev) => ({ ...prev, [clinic.id]: { name: "", specialization: "", userId: "" } }));
+      refreshClinics();
+    } catch {
+      toast({ title: tr("actionFailed"), variant: "error" });
+    }
+  }
+
+  async function handleSaveSurgeonEdit(surgeonId: string) {
+    const name = editingSurgeonDraft.name.trim();
+    if (!name) {
+      toast({ title: tr("missingFields"), variant: "error" });
+      return;
+    }
+    try {
+      await updateSurgeon(surgeonId, {
+        name,
+        specialization: editingSurgeonDraft.specialization.trim() || undefined,
+      });
+      audit(tr("edit"), name);
+      setEditingSurgeonId(null);
       refreshClinics();
     } catch {
       toast({ title: tr("actionFailed"), variant: "error" });
@@ -1016,6 +1070,30 @@ export function AdminDashboardPage() {
                     <Button className="mt-2 w-full" onClick={handleBroadcastSend} disabled={!broadcastMessage.trim()}>
                       {tr("sendBroadcast")}
                     </Button>
+
+                    {/* Published announcements, so an admin can see what is
+                        currently live and withdraw it. */}
+                    <div className="mt-4 space-y-2">
+                      <p className="text-[12px] font-semibold uppercase tracking-wide text-accent-subtle">{tr("publishedAnnouncements")}</p>
+                      {announcements.length === 0 && (
+                        <p className="text-[12px] text-accent-faint">{tr("noAnnouncements")}</p>
+                      )}
+                      {announcements.slice(0, 5).map((a) => (
+                        <div key={a.id} className="flex items-start justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 dark:border-neutral-800">
+                          <div className="min-w-0">
+                            <p className="truncate text-[13px] text-accent dark:text-white">{a.body}</p>
+                            <p className="text-[11px] text-accent-subtle">
+                              {new Date(a.publishedAt).toLocaleDateString()} · {a.active ? tr("statusActive") : tr("withdrawn")}
+                            </p>
+                          </div>
+                          {a.active && (
+                            <Button size="sm" variant="secondary" onClick={() => handleWithdrawAnnouncement(a.id, a.body.slice(0, 40))}>
+                              {tr("withdraw")}
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -1142,10 +1220,32 @@ export function AdminDashboardPage() {
                           {clinic.surgeons.map((surgeon) => (
                             <div key={surgeon.id} className="rounded-lg border border-border/60 p-3 dark:border-neutral-800">
                               <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div>
-                                  <p className="text-[13px] font-medium text-accent dark:text-white">{surgeon.name}</p>
-                                  <p className="text-[11px] text-accent-subtle">{surgeon.specialization}</p>
-                                </div>
+                                {editingSurgeonId === surgeon.id ? (
+                                  // Inline edit: clinics were editable but surgeons were
+                                  // delete-only, even though the API already accepted a
+                                  // name/specialization update.
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <input
+                                      className={cn(inputClass, "h-8 w-44")}
+                                      placeholder={tr("surgeonName")}
+                                      value={editingSurgeonDraft.name}
+                                      onChange={(e) => setEditingSurgeonDraft((d) => ({ ...d, name: e.target.value }))}
+                                    />
+                                    <input
+                                      className={cn(inputClass, "h-8 w-40")}
+                                      placeholder={tr("specialization")}
+                                      value={editingSurgeonDraft.specialization}
+                                      onChange={(e) => setEditingSurgeonDraft((d) => ({ ...d, specialization: e.target.value }))}
+                                    />
+                                    <Button size="sm" onClick={() => handleSaveSurgeonEdit(surgeon.id)}>{tr("save")}</Button>
+                                    <Button size="sm" variant="secondary" onClick={() => setEditingSurgeonId(null)}>{tr("cancel")}</Button>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <p className="text-[13px] font-medium text-accent dark:text-white">{surgeon.name}</p>
+                                    <p className="text-[11px] text-accent-subtle">{surgeon.specialization}</p>
+                                  </div>
+                                )}
                                 <div className="flex items-center gap-2">
                                   {/* Which login account this clinic listing belongs to */}
                                   <select
@@ -1158,6 +1258,18 @@ export function AdminDashboardPage() {
                                       <option key={vet.id} value={vet.id}>{vet.name} ({vet.email})</option>
                                     ))}
                                   </select>
+                                  {editingSurgeonId !== surgeon.id && (
+                                    <button
+                                      onClick={() => {
+                                        setEditingSurgeonId(surgeon.id);
+                                        setEditingSurgeonDraft({ name: surgeon.name, specialization: surgeon.specialization || "" });
+                                      }}
+                                      className="rounded-md p-1.5 text-accent-faint transition hover:bg-surface-tertiary hover:text-accent dark:hover:bg-neutral-800"
+                                      title={tr("edit")}
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
                                   <button onClick={() => handleRemoveSurgeon(surgeon.id, surgeon.name)} className="rounded-md p-1.5 text-accent-faint transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30">
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </button>

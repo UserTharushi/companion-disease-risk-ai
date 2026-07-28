@@ -1,8 +1,10 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import {
+  AnnouncementModel,
   ApprovalModel,
   AuditModel,
   TicketModel,
+  toAnnouncement,
   toApproval,
   toAudit,
   toTicket,
@@ -11,6 +13,7 @@ import {
 export const approvalRouter = Router();
 export const ticketRouter = Router();
 export const auditRouter = Router();
+export const announcementRouter = Router();
 
 // Identity headers stamped by the api-gateway from a verified JWT.
 function identity(req: Request): { uid: string; role: string } | null {
@@ -147,6 +150,75 @@ ticketRouter.patch("/:id", requireAdmin, async (req, res, next) => {
     );
     if (!doc) return res.status(404).json({ success: false, message: "Ticket not found" });
     res.json({ success: true, data: toTicket(doc) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Announcements ────────────────────────────────────────
+/**
+ * GET /api/announcements
+ *
+ * Readable by any authenticated user; each caller receives only the
+ * announcements addressed to them. Admins may pass ?all=true to see the full
+ * history including withdrawn ones, for management.
+ */
+announcementRouter.get("/", async (req, res, next) => {
+  try {
+    const user = identity(req);
+    const wantsAll = req.query.all === "true" && user?.role === "admin";
+    const filter: Record<string, unknown> = {};
+
+    if (!wantsAll) {
+      filter.active = true;
+      // "owner" is the system role for a pet owner.
+      const audience = user?.role === "vet" ? "vet" : "owner";
+      filter.audience = { $in: ["all", audience] };
+    }
+
+    const docs = await AnnouncementModel.find(filter).sort({ publishedAt: -1 }).limit(50);
+    const now = new Date().toISOString();
+    const rows = docs
+      .map(toAnnouncement)
+      .filter((a) => wantsAll || !a.expiresAt || a.expiresAt > now);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+announcementRouter.post("/", requireAdmin, async (req, res, next) => {
+  try {
+    const { title, body, audience, severity, expiresAt } = req.body ?? {};
+    if (!body || typeof body !== "string" || !body.trim()) {
+      return res.status(400).json({ success: false, message: "body is required" });
+    }
+    const doc = await AnnouncementModel.create({
+      title: (title && String(title).trim()) || "Announcement",
+      body: String(body).trim(),
+      audience: ["all", "owner", "vet"].includes(audience) ? audience : "all",
+      severity: severity === "warning" ? "warning" : "info",
+      active: true,
+      createdBy: identity(req)?.uid,
+      publishedAt: new Date().toISOString(),
+      expiresAt: expiresAt ? String(expiresAt) : undefined,
+    });
+    res.status(201).json({ success: true, data: toAnnouncement(doc) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Withdraw rather than delete, so the publication record survives.
+announcementRouter.patch("/:id", requireAdmin, async (req, res, next) => {
+  try {
+    const update: Record<string, unknown> = {};
+    if (req.body?.active !== undefined) update.active = Boolean(req.body.active);
+    if (req.body?.title !== undefined) update.title = String(req.body.title);
+    if (req.body?.body !== undefined) update.body = String(req.body.body);
+    const doc = await AnnouncementModel.findByIdAndUpdate(req.params.id, update, { new: true });
+    if (!doc) return res.status(404).json({ success: false, message: "Announcement not found" });
+    res.json({ success: true, data: toAnnouncement(doc) });
   } catch (err) {
     next(err);
   }

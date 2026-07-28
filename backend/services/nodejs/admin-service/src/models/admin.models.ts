@@ -86,6 +86,56 @@ export function toTicket(doc: TicketDocument) {
   };
 }
 
+/**
+ * Platform announcements shown to users on their dashboard.
+ *
+ * Held as a single record with an audience, rather than fanned out to one
+ * notification per user: an announcement is a broadcast, so duplicating it
+ * across every account would make editing or withdrawing it impossible.
+ * Deactivating sets active=false rather than deleting, so what was published
+ * and when stays answerable.
+ */
+export interface AnnouncementDocument extends Document {
+  title: string;
+  body: string;
+  audience: "all" | "owner" | "vet";
+  severity: "info" | "warning";
+  active: boolean;
+  createdBy?: string;
+  publishedAt: string;
+  expiresAt?: string;
+}
+
+const AnnouncementSchema = new Schema<AnnouncementDocument>(
+  {
+    title:       { type: String, required: true },
+    body:        { type: String, required: true },
+    audience:    { type: String, required: true, enum: ["all", "owner", "vet"], default: "all", index: true },
+    severity:    { type: String, required: true, enum: ["info", "warning"], default: "info" },
+    active:      { type: Boolean, required: true, default: true, index: true },
+    createdBy:   { type: String },
+    publishedAt: { type: String, required: true },
+    expiresAt:   { type: String },
+  },
+  { timestamps: true }
+);
+
+export const AnnouncementModel = model<AnnouncementDocument>("Announcement", AnnouncementSchema);
+
+export function toAnnouncement(doc: AnnouncementDocument) {
+  return {
+    id: String(doc._id),
+    title: doc.title,
+    body: doc.body,
+    audience: doc.audience,
+    severity: doc.severity,
+    active: doc.active,
+    createdBy: doc.createdBy,
+    publishedAt: doc.publishedAt,
+    expiresAt: doc.expiresAt,
+  };
+}
+
 export interface AuditDocument extends Document {
   action: string;
   target: string;
