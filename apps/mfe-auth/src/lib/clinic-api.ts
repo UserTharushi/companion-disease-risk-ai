@@ -149,10 +149,12 @@ export async function createInquiry(payload: InquiryWritePayload): Promise<Surge
   return request<SurgeonInquiry>(`/api/inquiries`, { method: "POST", body: JSON.stringify(payload) });
 }
 
-export async function replyToInquiry(inquiryId: string, reply?: string): Promise<SurgeonInquiry> {
+// reply is required: the service rejects an empty body rather than marking the
+// inquiry answered when the owner would receive nothing.
+export async function replyToInquiry(inquiryId: string, reply: string): Promise<SurgeonInquiry> {
   return request<SurgeonInquiry>(`/api/inquiries/${inquiryId}/reply`, {
     method: "PATCH",
-    body: JSON.stringify({ reply: reply ?? "" }),
+    body: JSON.stringify({ reply }),
   });
 }
 

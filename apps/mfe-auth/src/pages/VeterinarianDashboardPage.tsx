@@ -129,6 +129,8 @@ export function VeterinarianDashboardPage() {
   const [viewingAssessmentFor, setViewingAssessmentFor] = useState<PatientRow | null>(null);
   const [viewedAssessment, setViewedAssessment] = useState<StoredPrediction | null>(null);
   const [assessmentLoading, setAssessmentLoading] = useState(false);
+  const [replyByInquiry, setReplyByInquiry] = useState<Record<string, string>>({});
+  const [replyingId, setReplyingId] = useState<string | null>(null);
 
   // Record-diagnosis state (vet confirms the actual diagnosis for a patient's
   // latest AI assessment — feeds the AI-vs-actual continuous-learning loop)
@@ -355,12 +357,18 @@ export function VeterinarianDashboardPage() {
   }
 
   async function handleReplyInquiry(id: string) {
+    const reply = (replyByInquiry[id] || "").trim();
+    if (!reply) return;
+    setReplyingId(id);
     try {
-      const updated = await replyToInquiry(id);
+      const updated = await replyToInquiry(id, reply);
       setInquiries((prev) => prev.map((inq) => (inq.id === id ? updated : inq)));
-      toast({ title: tr("repliedStatus"), variant: "success" });
-    } catch {
-      toast({ title: tr("actionFailed"), variant: "error" });
+      setReplyByInquiry((prev) => ({ ...prev, [id]: "" }));
+      toast({ title: tr("replySent"), variant: "success" });
+    } catch (err) {
+      toast({ title: (err as Error).message || tr("actionFailed"), variant: "error" });
+    } finally {
+      setReplyingId(null);
     }
   }
 
@@ -942,23 +950,45 @@ export function VeterinarianDashboardPage() {
                     <div className={cn(card, "text-center text-[13px] text-accent-subtle")}>{loading ? tr("loadingData") : tr("noInquiriesYet")}</div>
                   )}
                   {inquiries.map((inq) => (
-                    <div key={inq.id} className={cn(card, "flex flex-wrap items-center justify-between gap-3")}>
-                      <div className="flex min-w-0 items-center gap-3">
+                    <div key={inq.id} className={card}>
+                      <div className="flex min-w-0 items-start gap-3">
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-tertiary text-accent-subtle dark:bg-neutral-800">
                           <MessageSquare className="h-4 w-4" />
                         </span>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] font-semibold text-accent dark:text-white">
                             {inq.petName || "—"}{inq.clinicName ? ` · ${inq.clinicName}` : ""}
                           </p>
                           <p className="text-[12px] text-accent-subtle">{inq.message}</p>
                           <p className="mt-0.5 text-[11px] text-accent-faint">{new Date(inq.createdAt).toLocaleString()}</p>
                         </div>
+                        {inq.status !== "open" && <Badge variant="success">{tr("repliedStatus")}</Badge>}
                       </div>
+
+                      {/* The reply text had nowhere to be typed: the button
+                          PATCHed with an empty body, so the inquiry was marked
+                          replied while the owner received nothing. */}
                       {inq.status === "open" ? (
-                        <Button size="sm" variant="secondary" onClick={() => handleReplyInquiry(inq.id)}>{tr("replyAction")}</Button>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <input
+                            className="h-9 min-w-[220px] flex-1 rounded-lg border border-border bg-surface px-3 text-[13px] text-accent outline-none transition focus:border-primary dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                            placeholder={tr("replyPlaceholder")}
+                            value={replyByInquiry[inq.id] || ""}
+                            onChange={(e) => setReplyByInquiry((prev) => ({ ...prev, [inq.id]: e.target.value }))}
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => handleReplyInquiry(inq.id)}
+                            disabled={!(replyByInquiry[inq.id] || "").trim() || replyingId === inq.id}
+                          >
+                            {replyingId === inq.id ? tr("loadingData") : tr("replyAction")}
+                          </Button>
+                        </div>
                       ) : (
-                        <Badge variant="success">{tr("repliedStatus")}</Badge>
+                        <div className="mt-3 rounded-lg border border-border/60 bg-surface-tertiary/40 px-3 py-2 text-[12px] dark:border-neutral-800 dark:bg-neutral-900/40">
+                          <span className="text-accent-subtle">{tr("yourReply")}: </span>
+                          <span className="text-accent dark:text-white">{inq.reply || tr("noReplyRecorded")}</span>
+                        </div>
                       )}
                     </div>
                   ))}

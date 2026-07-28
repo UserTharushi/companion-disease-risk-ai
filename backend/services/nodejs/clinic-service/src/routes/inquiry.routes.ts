@@ -13,6 +13,30 @@ function identity(req: Request): { uid: string; role: string } | null {
   return null;
 }
 
+const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:4004";
+
+/** Fire-and-forget: a notification failure must not fail the reply itself. */
+async function notifyOwnerOfReply(params: { ownerId: string; inquiryId: string; petName?: string }) {
+  if (!params.ownerId) return;
+  try {
+    await fetch(`${NOTIFICATION_SERVICE_URL}/api/notifications`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: params.ownerId,
+        type: "inquiry_replied",
+        title: "A veterinarian replied to your question",
+        body: params.petName
+          ? `Your question about ${params.petName} has been answered. Open Inquiries to read the reply.`
+          : "Your question has been answered. Open Inquiries to read the reply.",
+        dedupeKey: `inquiry_replied:${params.inquiryId}`,
+      }),
+    });
+  } catch (err) {
+    console.warn("[clinic-service] inquiry reply notification failed", err);
+  }
+}
+
 function mapInquiry(inquiry: any) {
   return {
     id: inquiry._id.toString(),
@@ -83,10 +107,24 @@ inquiryRouter.patch("/:inquiryId/reply", async (req, res, next) => {
     const inquiry = await InquiryModel.findById(req.params.inquiryId);
     if (!inquiry) return res.status(404).json({ success: false, message: "Inquiry not found" });
 
+    // Previously the status flipped to "replied" even with an empty body, so an
+    // inquiry could be closed while the owner received nothing at all.
     const reply = String(req.body.reply ?? "").trim();
-    if (reply) inquiry.reply = reply;
+    if (!reply) {
+      return res.status(400).json({ success: false, message: "A reply message is required" });
+    }
+    inquiry.reply = reply;
     inquiry.status = "replied";
     await inquiry.save();
+
+    // Tell the owner their question was answered - otherwise they only find out
+    // by chance, which for a health question is the wrong way round.
+    await notifyOwnerOfReply({
+      ownerId: inquiry.ownerId,
+      inquiryId: String(inquiry._id),
+      petName: inquiry.petName,
+    });
+
     res.json({ success: true, data: mapInquiry(inquiry.toObject()) });
   } catch (err) {
     next(err);

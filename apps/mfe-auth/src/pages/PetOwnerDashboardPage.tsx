@@ -55,7 +55,7 @@ interface ClinicDirectoryRecord {
 interface PetRecord { id: string; name: string; species: string; breed: string; age: string; weightKg: string; emoji: string; photoDataUrl?: string; vaccinationName?: string; vaccinationDate?: string; vaccinationFrequency?: string; nextVaccinationDate?: string; }
 interface OwnerProfile { displayName: string; email: string; phone: string; address: string; dateOfBirth: string; photoDataUrl?: string; }
 interface AppointmentRecord extends BackendAppointment { slot: string; bookedAt: string; clinicName: string; surgeonName: string; petName: string; ownerName: string; ownerPhone?: string; }
-interface SurgeonInquiryRecord { id: string; clinicId: string; clinicName: string; surgeonId: string; surgeonName: string; petId: string; petName: string; message: string; status: "open" | "replied"; createdAt: string; }
+interface SurgeonInquiryRecord { id: string; clinicId: string; clinicName: string; surgeonId: string; surgeonName: string; petId: string; petName: string; message: string; reply?: string | null; status: "open" | "replied"; createdAt: string; }
 interface ChatMessage { id: string; sender: "owner" | "assistant"; text: string; }
 type Tab = "home" | "pets" | "ai" | "clinics" | "profile";
 type SlotLookup = Record<string, Record<string, Record<string, string>>>;
@@ -1670,8 +1670,24 @@ export function PetOwnerDashboardPage() {
                   <div>
                     <h3 className="mb-3 text-[13px] font-semibold text-accent">{tr("inquiries")}</h3>
                     <div className="divide-y divide-neutral-100 dark:divide-neutral-800 rounded-xl border border-border/80 bg-surface dark:border-neutral-800 dark:bg-neutral-900">
+                      {/* The reply was never shown here - the owner saw only a
+                          "replied" badge with no way to read the answer. */}
                       {surgeonInquiries.slice(0, 8).map((inq) => (
-                        <div key={inq.id} className="flex items-center justify-between px-4 py-3"><div className="min-w-0"><p className="text-[13px] font-medium text-accent dark:text-white">{inq.surgeonName}</p><p className="text-[12px] text-accent-subtle truncate">{inq.message}</p></div><Badge variant={inq.status === "replied" ? "success" : "warning"}>{statusLabel(inq.status)}</Badge></div>
+                        <div key={inq.id} className="px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-medium text-accent dark:text-white">{inq.surgeonName}</p>
+                              <p className="text-[12px] text-accent-subtle">{inq.message}</p>
+                            </div>
+                            <Badge variant={inq.status === "replied" ? "success" : "warning"}>{statusLabel(inq.status)}</Badge>
+                          </div>
+                          {inq.reply ? (
+                            <div className="mt-2 rounded-lg border-l-2 border-primary/50 bg-surface-tertiary/40 px-3 py-2 dark:bg-neutral-800/40">
+                              <p className="text-[11px] font-medium text-accent-subtle">{tr("vetReply")}</p>
+                              <p className="text-[12px] text-accent dark:text-white">{inq.reply}</p>
+                            </div>
+                          ) : null}
+                        </div>
                       ))}
                     </div>
                   </div>
