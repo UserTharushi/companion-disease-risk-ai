@@ -8,7 +8,7 @@ import { appointmentRouter } from "./routes/appointment.routes";
 import { inquiryRouter } from "./routes/inquiry.routes";
 import { accessRouter } from "./routes/access.routes";
 import { errorHandler } from "./middleware/errorHandler";
-import { seedClinicData } from "./models/clinic.models";
+import { seedClinicData, migrateInquiryThreads } from "./models/clinic.models";
 
 const app = express();
 app.use(helmet()); app.use(cors()); app.use(morgan("dev")); app.use(express.json());
@@ -28,6 +28,10 @@ async function connectMongoWithFallback() {
         await mongoose.connect(uri, { serverSelectionTimeoutMS: 3000 });
         console.log(`[clinic-service] MongoDB connected (${uri.includes("@mongodb:") ? "docker" : "local/env"})`);
         await seedClinicData();
+        // Backfill only; a failure here must not stop the service booting.
+        await migrateInquiryThreads().catch((err) =>
+          console.warn("[clinic-service] inquiry thread migration failed", err)
+        );
         return;
       } catch (err) {
         lastError = err;

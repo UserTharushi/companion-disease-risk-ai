@@ -1,5 +1,12 @@
 import { Router, type Request } from "express";
-import { InquiryModel } from "../models/clinic.models";
+import {
+  InquiryModel,
+  SurgeonModel,
+  MAX_THREAD_MESSAGES,
+  deriveInquiryStatus,
+  type InquiryDocument,
+  type InquiryMessage,
+} from "../models/clinic.models";
 
 export const inquiryRouter = Router();
 
@@ -15,29 +22,40 @@ function identity(req: Request): { uid: string; role: string } | null {
 
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:4004";
 
-/** Fire-and-forget: a notification failure must not fail the reply itself. */
-async function notifyOwnerOfReply(params: { ownerId: string; inquiryId: string; petName?: string }) {
-  if (!params.ownerId) return;
+/**
+ * Surgeon listings belonging to a veterinarian's auth account.
+ *
+ * A vet may only see and answer inquiries addressed to their own listing.
+ * Previously the list was unfiltered, so any vet could read — and reply to —
+ * every owner's question, including those sent to another clinic entirely.
+ */
+async function surgeonIdsForVet(uid: string): Promise<string[]> {
+  const surgeons = await SurgeonModel.find({ userId: uid }).select("_id").lean();
+  return surgeons.map((surgeon) => String(surgeon._id));
+}
+
+/** Fire-and-forget: a notification failure must not fail the message itself. */
+async function notify(params: {
+  userId: string;
+  type: "inquiry_replied" | "inquiry_message";
+  title: string;
+  body: string;
+  dedupeKey: string;
+}) {
+  if (!params.userId) return;
   try {
     await fetch(`${NOTIFICATION_SERVICE_URL}/api/notifications`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: params.ownerId,
-        type: "inquiry_replied",
-        title: "A veterinarian replied to your question",
-        body: params.petName
-          ? `Your question about ${params.petName} has been answered. Open Inquiries to read the reply.`
-          : "Your question has been answered. Open Inquiries to read the reply.",
-        dedupeKey: `inquiry_replied:${params.inquiryId}`,
-      }),
+      body: JSON.stringify(params),
     });
   } catch (err) {
-    console.warn("[clinic-service] inquiry reply notification failed", err);
+    console.warn("[clinic-service] inquiry notification failed", err);
   }
 }
 
 function mapInquiry(inquiry: any) {
+  const messages: InquiryMessage[] = inquiry.messages ?? [];
   return {
     id: inquiry._id.toString(),
     ownerId: inquiry.ownerId,
@@ -48,40 +66,54 @@ function mapInquiry(inquiry: any) {
     petId: inquiry.petId,
     petName: inquiry.petName,
     message: inquiry.message,
-    reply: inquiry.reply ?? null,
+    messages: messages.map((m) => ({
+      senderRole: m.senderRole,
+      body: m.body,
+      createdAt: m.createdAt,
+    })),
     status: inquiry.status,
+    remainingMessages: Math.max(0, MAX_THREAD_MESSAGES - messages.length),
+    maxMessages: MAX_THREAD_MESSAGES,
     createdAt: inquiry.createdAt,
     updatedAt: inquiry.updatedAt,
   };
 }
 
-// List inquiries. Owners see only their own; vets/admins see all (optionally
-// filtered by ?status= or ?ownerId=).
+// List inquiries. Owners see their own; vets see only threads addressed to a
+// surgeon listing linked to their account; admins see everything.
 inquiryRouter.get("/", async (req, res, next) => {
   try {
-    const filter: Record<string, string> = {};
+    const filter: Record<string, unknown> = {};
     if (req.query.status) filter.status = String(req.query.status);
     if (req.query.ownerId) filter.ownerId = String(req.query.ownerId);
 
     const user = identity(req);
-    if (user?.role === "owner") filter.ownerId = user.uid;
+    if (user?.role === "owner") {
+      filter.ownerId = user.uid;
+    } else if (user?.role === "vet") {
+      const mine = await surgeonIdsForVet(user.uid);
+      // Fail closed: a vet with no linked listing sees nothing rather than all.
+      if (!mine.length) return res.json({ success: true, data: [] });
+      filter.surgeonId = { $in: mine };
+    }
 
-    const inquiries = await InquiryModel.find(filter).sort({ createdAt: -1 }).lean();
+    const inquiries = await InquiryModel.find(filter).sort({ updatedAt: -1 }).lean();
     res.json({ success: true, data: inquiries.map(mapInquiry) });
   } catch (err) {
     next(err);
   }
 });
 
-// Owner sends an inquiry to a clinic/surgeon about a pet.
+// Owner opens a thread with a clinic/surgeon about a pet.
 inquiryRouter.post("/", async (req, res, next) => {
   try {
     const message = String(req.body.message ?? "").trim();
     if (!message) return res.status(400).json({ success: false, message: "message is required" });
 
     const user = identity(req);
+    const ownerId = user?.role === "owner" ? user.uid : String(req.body.ownerId ?? "");
     const inquiry = await InquiryModel.create({
-      ownerId: user?.role === "owner" ? user.uid : req.body.ownerId,
+      ownerId,
       clinicId: req.body.clinicId ?? "",
       clinicName: req.body.clinicName ?? "",
       surgeonId: req.body.surgeonId ?? "",
@@ -89,43 +121,120 @@ inquiryRouter.post("/", async (req, res, next) => {
       petId: req.body.petId ?? "",
       petName: req.body.petName ?? "",
       message,
-      status: "open",
+      messages: [{ senderRole: "owner", senderId: ownerId, body: message, createdAt: new Date() }],
+      status: "awaiting_vet",
     });
-    res.status(201).json({ success: true, data: mapInquiry(inquiry) });
+
+    await notifyCounterparty(inquiry, "owner");
+    res.status(201).json({ success: true, data: mapInquiry(inquiry.toObject()) });
   } catch (err) {
     next(err);
   }
 });
 
-// Vet/admin replies to an inquiry (marks it replied). Owners cannot reply.
+/** Tell whoever did not just speak that there is something to read. */
+async function notifyCounterparty(inquiry: InquiryDocument, senderRole: "owner" | "vet") {
+  const index = inquiry.messages.length;
+  if (senderRole === "owner") {
+    const surgeon = await SurgeonModel.findById(inquiry.surgeonId).lean().catch(() => null);
+    const vetUserId = (surgeon as { userId?: string } | null)?.userId;
+    if (!vetUserId) return;
+    await notify({
+      userId: vetUserId,
+      type: "inquiry_message",
+      title: "New message about a patient",
+      body: inquiry.petName
+        ? `An owner sent a message about ${inquiry.petName}.`
+        : "An owner sent a message about their pet.",
+      dedupeKey: `inquiry_msg:${String(inquiry._id)}:${index}`,
+    });
+    return;
+  }
+  await notify({
+    userId: inquiry.ownerId,
+    type: "inquiry_replied",
+    title: "A veterinarian replied to your question",
+    body: inquiry.petName
+      ? `Your question about ${inquiry.petName} has been answered. Open Inquiries to read the reply.`
+      : "Your question has been answered. Open Inquiries to read the reply.",
+    dedupeKey: `inquiry_msg:${String(inquiry._id)}:${index}`,
+  });
+}
+
+/**
+ * Append a turn to a thread.
+ *
+ * Shared by the owner follow-up and the vet reply so the cap, the authorisation
+ * check and the status derivation cannot drift apart between the two.
+ */
+async function appendMessage(req: Request, inquiryId: string) {
+  const body = String(req.body.body ?? req.body.reply ?? req.body.message ?? "").trim();
+  if (!body) return { status: 400 as const, payload: { success: false, message: "A message is required" } };
+
+  const inquiry = await InquiryModel.findById(inquiryId);
+  if (!inquiry) return { status: 404 as const, payload: { success: false, message: "Inquiry not found" } };
+
+  const user = identity(req);
+  let senderRole: "owner" | "vet";
+
+  if (user?.role === "owner") {
+    if (inquiry.ownerId !== user.uid) {
+      return { status: 403 as const, payload: { success: false, message: "This is not your inquiry" } };
+    }
+    senderRole = "owner";
+  } else if (user?.role === "vet") {
+    const mine = await surgeonIdsForVet(user.uid);
+    if (!mine.includes(String(inquiry.surgeonId))) {
+      return {
+        status: 403 as const,
+        payload: { success: false, message: "This inquiry was not sent to you" },
+      };
+    }
+    senderRole = "vet";
+  } else if (user?.role === "admin") {
+    senderRole = "vet";
+  } else {
+    return { status: 403 as const, payload: { success: false, message: "Authentication required" } };
+  }
+
+  if (inquiry.messages.length >= MAX_THREAD_MESSAGES) {
+    return {
+      status: 409 as const,
+      payload: {
+        success: false,
+        message: "This conversation has reached its limit. Please book an appointment to continue.",
+      },
+    };
+  }
+
+  inquiry.messages.push({ senderRole, senderId: user?.uid ?? "", body, createdAt: new Date() });
+  inquiry.status = deriveInquiryStatus(inquiry.messages);
+  await inquiry.save();
+
+  await notifyCounterparty(inquiry, senderRole);
+  return { status: 200 as const, payload: { success: true, data: mapInquiry(inquiry.toObject()) } };
+}
+
+// Either party adds a turn.
+inquiryRouter.post("/:inquiryId/messages", async (req, res, next) => {
+  try {
+    const result = await appendMessage(req, req.params.inquiryId);
+    res.status(result.status).json(result.payload);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Legacy vet-reply route, kept so a stale frontend bundle keeps working. Owners
+// must use /messages — replying here would misattribute the turn to the vet.
 inquiryRouter.patch("/:inquiryId/reply", async (req, res, next) => {
   try {
     const user = identity(req);
-    if (user && user.role === "owner") {
+    if (user?.role === "owner") {
       return res.status(403).json({ success: false, message: "Only veterinary staff can reply to inquiries" });
     }
-    const inquiry = await InquiryModel.findById(req.params.inquiryId);
-    if (!inquiry) return res.status(404).json({ success: false, message: "Inquiry not found" });
-
-    // Previously the status flipped to "replied" even with an empty body, so an
-    // inquiry could be closed while the owner received nothing at all.
-    const reply = String(req.body.reply ?? "").trim();
-    if (!reply) {
-      return res.status(400).json({ success: false, message: "A reply message is required" });
-    }
-    inquiry.reply = reply;
-    inquiry.status = "replied";
-    await inquiry.save();
-
-    // Tell the owner their question was answered - otherwise they only find out
-    // by chance, which for a health question is the wrong way round.
-    await notifyOwnerOfReply({
-      ownerId: inquiry.ownerId,
-      inquiryId: String(inquiry._id),
-      petName: inquiry.petName,
-    });
-
-    res.json({ success: true, data: mapInquiry(inquiry.toObject()) });
+    const result = await appendMessage(req, req.params.inquiryId);
+    res.status(result.status).json(result.payload);
   } catch (err) {
     next(err);
   }

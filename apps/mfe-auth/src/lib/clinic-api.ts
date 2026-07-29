@@ -149,12 +149,18 @@ export async function createInquiry(payload: InquiryWritePayload): Promise<Surge
   return request<SurgeonInquiry>(`/api/inquiries`, { method: "POST", body: JSON.stringify(payload) });
 }
 
-// reply is required: the service rejects an empty body rather than marking the
-// inquiry answered when the owner would receive nothing.
-export async function replyToInquiry(inquiryId: string, reply: string): Promise<SurgeonInquiry> {
-  return request<SurgeonInquiry>(`/api/inquiries/${inquiryId}/reply`, {
-    method: "PATCH",
-    body: JSON.stringify({ reply }),
+/**
+ * Append a turn to an inquiry thread. Used by both sides — the service decides
+ * whether the sender is the owner or the vet from the verified identity header,
+ * so the caller cannot claim to be someone else.
+ *
+ * Throws when the thread has hit its message cap (the owner is told to book an
+ * appointment instead).
+ */
+export async function sendInquiryMessage(inquiryId: string, body: string): Promise<SurgeonInquiry> {
+  return request<SurgeonInquiry>(`/api/inquiries/${inquiryId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
   });
 }
 

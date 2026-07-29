@@ -31,7 +31,7 @@ import {
   updateOwnerPet,
   type BackendPet,
 } from "../lib/pet-api";
-import { cancelAppointment, createAppointment, listAppointments, listClinics, listNearbyClinics, updateAppointment, listInquiries, createInquiry, type NearbyClinic } from "../lib/clinic-api";
+import { cancelAppointment, createAppointment, listAppointments, listClinics, listNearbyClinics, updateAppointment, listInquiries, createInquiry, sendInquiryMessage, type NearbyClinic } from "../lib/clinic-api";
 import { getPredictionHistory, type PredictionHistoryItem } from "../lib/prediction-api";
 import { listUpcomingVaccinations } from "../lib/vaccination-api";
 import { listAnnouncements, type Announcement } from "../lib/admin-api";
@@ -55,7 +55,8 @@ interface ClinicDirectoryRecord {
 interface PetRecord { id: string; name: string; species: string; breed: string; age: string; weightKg: string; emoji: string; photoDataUrl?: string; vaccinationName?: string; vaccinationDate?: string; vaccinationFrequency?: string; nextVaccinationDate?: string; }
 interface OwnerProfile { displayName: string; email: string; phone: string; address: string; dateOfBirth: string; photoDataUrl?: string; }
 interface AppointmentRecord extends BackendAppointment { slot: string; bookedAt: string; clinicName: string; surgeonName: string; petName: string; ownerName: string; ownerPhone?: string; }
-interface SurgeonInquiryRecord { id: string; clinicId: string; clinicName: string; surgeonId: string; surgeonName: string; petId: string; petName: string; message: string; reply?: string | null; status: "open" | "replied"; createdAt: string; }
+interface InquiryThreadMessageRecord { senderRole: "owner" | "vet"; body: string; createdAt: string; }
+interface SurgeonInquiryRecord { id: string; clinicId: string; clinicName: string; surgeonId: string; surgeonName: string; petId: string; petName: string; message: string; messages: InquiryThreadMessageRecord[]; status: "awaiting_vet" | "answered" | "closed"; remainingMessages: number; maxMessages: number; createdAt: string; }
 interface ChatMessage { id: string; sender: "owner" | "assistant"; text: string; }
 type Tab = "home" | "pets" | "ai" | "clinics" | "profile";
 type SlotLookup = Record<string, Record<string, Record<string, string>>>;
@@ -281,6 +282,7 @@ export function PetOwnerDashboardPage() {
   const STATUS_KEY: Record<string, string> = {
     pending: "statusPending", confirmed: "statusConfirmed", cancelled: "statusCancelled",
     completed: "statusCompleted", open: "statusOpen", replied: "statusReplied",
+    awaiting_vet: "statusAwaitingVet", answered: "statusAnswered", closed: "statusClosed",
   };
   const statusLabel = (status: string) => (STATUS_KEY[status] ? tr(STATUS_KEY[status]) : status);
   const riskLabel = (risk: string) =>
@@ -385,6 +387,8 @@ export function PetOwnerDashboardPage() {
   const [rescheduleSlotByAppointment, setRescheduleSlotByAppointment] = useState<Record<string, string>>({});
   const [inquiryBySurgeon, setInquiryBySurgeon] = useState<Record<string, string>>({});
   const [surgeonInquiries, setSurgeonInquiries] = useState<SurgeonInquiryRecord[]>(() => loadJson(inquiriesStorageKey, []));
+  const [followUpByInquiry, setFollowUpByInquiry] = useState<Record<string, string>>({});
+  const [sendingFollowUpId, setSendingFollowUpId] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number; accuracyKm?: number } | null>(null);
   const [externalClinics, setExternalClinics] = useState<NearbyClinic[]>([]);
 
@@ -810,6 +814,25 @@ export function PetOwnerDashboardPage() {
       toast({ title: tr("inquirySent"), variant: "success" });
     } catch (err) {
       toast({ title: tr("actionFailed"), description: (err as Error).message, variant: "error" });
+    }
+  }
+  /**
+   * Owner adds a turn to an existing thread — usually answering the clarifying
+   * question a vet's reply ends with. Rejected once the thread hits its cap.
+   */
+  async function handleSendFollowUp(inquiryId: string) {
+    const body = (followUpByInquiry[inquiryId] || "").trim();
+    if (!body) return;
+    setSendingFollowUpId(inquiryId);
+    try {
+      const updated = await sendInquiryMessage(inquiryId, body);
+      setSurgeonInquiries((prev) => prev.map((inq) => (inq.id === inquiryId ? (updated as SurgeonInquiryRecord) : inq)));
+      setFollowUpByInquiry((prev) => ({ ...prev, [inquiryId]: "" }));
+      toast({ title: tr("messageSent"), variant: "success" });
+    } catch (err) {
+      toast({ title: (err as Error).message || tr("actionFailed"), variant: "error" });
+    } finally {
+      setSendingFollowUpId(null);
     }
   }
   async function handleSendMessage() {
@@ -1670,23 +1693,63 @@ export function PetOwnerDashboardPage() {
                   <div>
                     <h3 className="mb-3 text-[13px] font-semibold text-accent">{tr("inquiries")}</h3>
                     <div className="divide-y divide-neutral-100 dark:divide-neutral-800 rounded-xl border border-border/80 bg-surface dark:border-neutral-800 dark:bg-neutral-900">
-                      {/* The reply was never shown here - the owner saw only a
-                          "replied" badge with no way to read the answer. */}
+                      {/* A bounded thread rather than a single question: a vet's
+                          answer is usually a clarifying question, and without a
+                          way to answer it the conversation dead-ended here. */}
                       {surgeonInquiries.slice(0, 8).map((inq) => (
                         <div key={inq.id} className="px-4 py-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-[13px] font-medium text-accent dark:text-white">{inq.surgeonName}</p>
-                              <p className="text-[12px] text-accent-subtle">{inq.message}</p>
+                              <p className="text-[11px] text-accent-faint">{inq.petName}</p>
                             </div>
-                            <Badge variant={inq.status === "replied" ? "success" : "warning"}>{statusLabel(inq.status)}</Badge>
+                            <Badge variant={inq.status === "answered" ? "success" : inq.status === "closed" ? "info" : "warning"}>
+                              {statusLabel(inq.status)}
+                            </Badge>
                           </div>
-                          {inq.reply ? (
-                            <div className="mt-2 rounded-lg border-l-2 border-primary/50 bg-surface-tertiary/40 px-3 py-2 dark:bg-neutral-800/40">
-                              <p className="text-[11px] font-medium text-accent-subtle">{tr("vetReply")}</p>
-                              <p className="text-[12px] text-accent dark:text-white">{inq.reply}</p>
+
+                          <div className="mt-2 space-y-2">
+                            {(inq.messages ?? []).map((msg, index) => (
+                              <div
+                                key={index}
+                                className={cn(
+                                  "rounded-lg px-3 py-2 text-[12px]",
+                                  msg.senderRole === "vet"
+                                    ? "ml-6 border-l-2 border-primary/50 bg-surface-tertiary/40 dark:bg-neutral-800/40"
+                                    : "mr-6 bg-surface-tertiary/20 dark:bg-neutral-800/20"
+                                )}
+                              >
+                                <p className="text-[11px] font-medium text-accent-subtle">
+                                  {msg.senderRole === "vet" ? tr("vetReply") : tr("threadYouLabel")}
+                                  {" · "}
+                                  {new Date(msg.createdAt).toLocaleString()}
+                                </p>
+                                <p className="mt-0.5 text-accent dark:text-white">{msg.body}</p>
+                              </div>
+                            ))}
+                          </div>
+
+                          {inq.status === "closed" ? (
+                            <p className="mt-2 text-[11px] text-accent-subtle">{tr("threadClosedOwner")}</p>
+                          ) : (
+                            <div className="mt-2 flex items-center gap-2">
+                              <Input
+                                value={followUpByInquiry[inq.id] || ""}
+                                onChange={(e) => setFollowUpByInquiry((p) => ({ ...p, [inq.id]: e.target.value }))}
+                                onKeyDown={(e) => { if (e.key === "Enter") handleSendFollowUp(inq.id); }}
+                                placeholder={tr("followUpPlaceholder")}
+                                className="h-7 flex-1 text-xs"
+                              />
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => handleSendFollowUp(inq.id)}
+                                disabled={!(followUpByInquiry[inq.id] || "").trim() || sendingFollowUpId === inq.id}
+                              >
+                                <Send className="h-3 w-3" />
+                              </Button>
                             </div>
-                          ) : null}
+                          )}
                         </div>
                       ))}
                     </div>

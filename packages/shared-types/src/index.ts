@@ -173,11 +173,24 @@ export interface SurgeonInquiry {
   surgeonName: string;
   petId: string;
   petName: string;
+  /** The original question, mirrored from messages[0]. */
   message: string;
-  reply?: string | null;
-  status: "open" | "replied";
+  messages: InquiryThreadMessage[];
+  /**
+   * Derived from the last speaker. "closed" means the message cap was reached
+   * and the owner should book an appointment to continue.
+   */
+  status: "awaiting_vet" | "answered" | "closed";
+  remainingMessages: number;
+  maxMessages: number;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface InquiryThreadMessage {
+  senderRole: "owner" | "vet";
+  body: string;
+  createdAt: string;
 }
 
 // ── API Responses ─────────────────────────────

@@ -13,7 +13,7 @@ import { Dropzone } from "../components/ui/dropzone";
 import { ThemeSwitcher } from "../components/ThemeSwitcher";
 import { cn } from "../lib/utils";
 import { toast } from "../lib/use-toast";
-import { listAllAppointments, listClinics, updateAppointment, listInquiries, replyToInquiry } from "../lib/clinic-api";
+import { listAllAppointments, listClinics, updateAppointment, listInquiries, sendInquiryMessage } from "../lib/clinic-api";
 import { listAllPets, type BackendPet } from "../lib/pet-api";
 import { listVaccinations } from "../lib/vaccination-api";
 import { getPrediction, getPredictionHistory, recordVetDiagnosis, type StoredPrediction } from "../lib/prediction-api";
@@ -299,7 +299,9 @@ export function VeterinarianDashboardPage() {
   const highRiskPatients = patients.filter(
     (patient) => patient.lastRisk && patient.lastRisk.level === "high" && Date.now() - new Date(patient.lastRisk.at).getTime() < RISK_RECENT_MS,
   );
-  const openInquiries = inquiries.filter((inq) => inq.status === "open");
+  // "Needs me" rather than "never answered": an owner follow-up puts an already
+  // answered thread back in the queue, which is the point of the thread.
+  const openInquiries = inquiries.filter((inq) => inq.status === "awaiting_vet");
 
   const followUps: FollowUpRow[] = useMemo(() => {
     const rows: FollowUpRow[] = [];
@@ -361,7 +363,7 @@ export function VeterinarianDashboardPage() {
     if (!reply) return;
     setReplyingId(id);
     try {
-      const updated = await replyToInquiry(id, reply);
+      const updated = await sendInquiryMessage(id, reply);
       setInquiries((prev) => prev.map((inq) => (inq.id === id ? updated : inq)));
       setReplyByInquiry((prev) => ({ ...prev, [id]: "" }));
       toast({ title: tr("replySent"), variant: "success" });
@@ -433,6 +435,9 @@ export function VeterinarianDashboardPage() {
 
   const statusVariant = (status: BackendAppointment["status"]) =>
     status === "confirmed" ? "success" : status === "cancelled" ? "danger" : status === "completed" ? "info" : "warning";
+
+  const inquiryStatusLabel = (status: SurgeonInquiry["status"]) =>
+    status === "awaiting_vet" ? tr("statusAwaitingVet") : status === "answered" ? tr("statusAnswered") : tr("statusClosed");
 
   const vaccineBadge = (status: PatientRow["vaccineStatus"]) =>
     status === "overdue"
@@ -959,22 +964,46 @@ export function VeterinarianDashboardPage() {
                           <p className="truncate text-[13px] font-semibold text-accent dark:text-white">
                             {inq.petName || "—"}{inq.clinicName ? ` · ${inq.clinicName}` : ""}
                           </p>
-                          <p className="text-[12px] text-accent-subtle">{inq.message}</p>
                           <p className="mt-0.5 text-[11px] text-accent-faint">{new Date(inq.createdAt).toLocaleString()}</p>
                         </div>
-                        {inq.status !== "open" && <Badge variant="success">{tr("repliedStatus")}</Badge>}
+                        <Badge variant={inq.status === "awaiting_vet" ? "warning" : inq.status === "answered" ? "success" : "info"}>
+                          {inquiryStatusLabel(inq.status)}
+                        </Badge>
                       </div>
 
-                      {/* The reply text had nowhere to be typed: the button
-                          PATCHed with an empty body, so the inquiry was marked
-                          replied while the owner received nothing. */}
-                      {inq.status === "open" ? (
+                      {/* The whole exchange, so a follow-up question is read in
+                          the context of what was already asked and answered. */}
+                      <div className="mt-3 space-y-2">
+                        {(inq.messages ?? []).map((msg, index) => (
+                          <div
+                            key={index}
+                            className={cn(
+                              "rounded-lg px-3 py-2 text-[12px]",
+                              msg.senderRole === "vet"
+                                ? "ml-6 border-l-2 border-primary/50 bg-primary/5 dark:bg-primary/10"
+                                : "mr-6 bg-surface-tertiary/50 dark:bg-neutral-800/50"
+                            )}
+                          >
+                            <p className="text-[11px] font-medium text-accent-subtle">
+                              {msg.senderRole === "vet" ? tr("threadYouLabel") : tr("threadOwnerLabel")}
+                              {" · "}
+                              {new Date(msg.createdAt).toLocaleString()}
+                            </p>
+                            <p className="mt-0.5 text-accent dark:text-white">{msg.body}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {inq.status === "closed" ? (
+                        <p className="mt-3 text-[12px] text-accent-subtle">{tr("threadClosedVet")}</p>
+                      ) : (
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                           <input
                             className="h-9 min-w-[220px] flex-1 rounded-lg border border-border bg-surface px-3 text-[13px] text-accent outline-none transition focus:border-primary dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
                             placeholder={tr("replyPlaceholder")}
                             value={replyByInquiry[inq.id] || ""}
                             onChange={(e) => setReplyByInquiry((prev) => ({ ...prev, [inq.id]: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === "Enter") handleReplyInquiry(inq.id); }}
                           />
                           <Button
                             size="sm"
@@ -983,11 +1012,9 @@ export function VeterinarianDashboardPage() {
                           >
                             {replyingId === inq.id ? tr("loadingData") : tr("replyAction")}
                           </Button>
-                        </div>
-                      ) : (
-                        <div className="mt-3 rounded-lg border border-border/60 bg-surface-tertiary/40 px-3 py-2 text-[12px] dark:border-neutral-800 dark:bg-neutral-900/40">
-                          <span className="text-accent-subtle">{tr("yourReply")}: </span>
-                          <span className="text-accent dark:text-white">{inq.reply || tr("noReplyRecorded")}</span>
+                          <span className="text-[11px] text-accent-faint">
+                            {inq.remainingMessages} {tr("messagesRemaining")}
+                          </span>
                         </div>
                       )}
                     </div>

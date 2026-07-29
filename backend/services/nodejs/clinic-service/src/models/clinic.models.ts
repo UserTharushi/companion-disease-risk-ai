@@ -193,6 +193,25 @@ export async function grantAccessForAppointment(params: {
   );
 }
 
+/**
+ * A single turn in an inquiry thread.
+ *
+ * Threads are deliberately BOUNDED (see MAX_THREAD_MESSAGES). This is triage,
+ * not consultation: a vet's answer is usually a clarifying question, and the
+ * owner needs to be able to answer it — but an unbounded chat would turn into
+ * free-text clinical advice, which this system does not provide. Once the cap
+ * is reached the thread closes and the owner is pointed at a real appointment.
+ */
+export interface InquiryMessage {
+  senderRole: "owner" | "vet";
+  senderId: string;
+  body: string;
+  createdAt: Date;
+}
+
+/** Hard cap on turns per thread. Reaching it closes the thread. */
+export const MAX_THREAD_MESSAGES = 10;
+
 export interface InquiryDocument extends Document {
   ownerId: string;
   clinicId: string;
@@ -201,10 +220,24 @@ export interface InquiryDocument extends Document {
   surgeonName: string;
   petId: string;
   petName: string;
+  /**
+   * The original question, mirrored from messages[0]. Retained because it is a
+   * required field on existing documents; messages[] is the source of truth.
+   */
   message: string;
-  reply?: string;
-  status: "open" | "replied";
+  messages: InquiryMessage[];
+  status: "awaiting_vet" | "answered" | "closed";
 }
+
+const InquiryMessageSchema = new Schema<InquiryMessage>(
+  {
+    senderRole: { type: String, enum: ["owner", "vet"], required: true },
+    senderId: { type: String, default: "" },
+    body: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
 
 const InquirySchema = new Schema<InquiryDocument>(
   {
@@ -216,17 +249,84 @@ const InquirySchema = new Schema<InquiryDocument>(
     petId: { type: String, default: "" },
     petName: { type: String, default: "" },
     message: { type: String, required: true },
-    reply: { type: String },
-    status: { type: String, enum: ["open", "replied"], default: "open" },
+    messages: { type: [InquiryMessageSchema], default: [] },
+    // Derived from who spoke last, never set directly — this is what makes the
+    // vet's inquiry list a real work queue: an owner follow-up puts the thread
+    // back into "awaiting_vet" instead of leaving it terminally "replied".
+    status: {
+      type: String,
+      enum: ["awaiting_vet", "answered", "closed"],
+      default: "awaiting_vet",
+      index: true,
+    },
   },
   { timestamps: true }
 );
+
+/** Status follows the last speaker; the cap wins over everything. */
+export function deriveInquiryStatus(messages: InquiryMessage[]): InquiryDocument["status"] {
+  if (messages.length >= MAX_THREAD_MESSAGES) return "closed";
+  return messages[messages.length - 1]?.senderRole === "vet" ? "answered" : "awaiting_vet";
+}
 
 export const ClinicModel = model<ClinicDocument>("Clinic", ClinicSchema);
 export const SurgeonModel = model<SurgeonDocument>("Surgeon", SurgeonSchema);
 export const TimeSlotModel = model<TimeSlotDocument>("TimeSlot", TimeSlotSchema);
 export const AppointmentModel = model<AppointmentDocument>("Appointment", AppointmentSchema);
 export const InquiryModel = model<InquiryDocument>("Inquiry", InquirySchema);
+
+/**
+ * Fold pre-thread inquiries (message + optional reply) into messages[].
+ *
+ * Runs on every boot and is idempotent — it only touches documents that have no
+ * thread yet. Without it, existing inquiries would render as empty threads and
+ * effectively disappear from both dashboards.
+ *
+ * Uses the raw collection deliberately: `reply` is no longer in the schema, so a
+ * Mongoose query would strip the very field being migrated.
+ */
+export async function migrateInquiryThreads(): Promise<number> {
+  const collection = InquiryModel.collection;
+  const legacy = await collection
+    .find({ $or: [{ messages: { $exists: false } }, { messages: { $size: 0 } }] })
+    .toArray();
+
+  let migrated = 0;
+  for (const doc of legacy) {
+    const messages: InquiryMessage[] = [];
+    const question = String(doc.message ?? "").trim();
+    if (question) {
+      messages.push({
+        senderRole: "owner",
+        senderId: String(doc.ownerId ?? ""),
+        body: question,
+        createdAt: doc.createdAt ?? new Date(),
+      });
+    }
+    // A "replied" status with no reply text is the old broken behaviour: the
+    // thread was closed while the owner received nothing. Folding it in without
+    // a vet turn correctly puts it back in front of the vet.
+    const reply = String(doc.reply ?? "").trim();
+    if (reply) {
+      messages.push({
+        senderRole: "vet",
+        senderId: "",
+        body: reply,
+        createdAt: doc.updatedAt ?? doc.createdAt ?? new Date(),
+      });
+    }
+    if (!messages.length) continue;
+
+    await collection.updateOne(
+      { _id: doc._id },
+      { $set: { messages, status: deriveInquiryStatus(messages) }, $unset: { reply: "" } }
+    );
+    migrated += 1;
+  }
+
+  if (migrated) console.log(`[clinic-service] migrated ${migrated} inquiry thread(s)`);
+  return migrated;
+}
 
 function dayAt(hour: number, offsetDays = 0): string {
   const date = new Date();
