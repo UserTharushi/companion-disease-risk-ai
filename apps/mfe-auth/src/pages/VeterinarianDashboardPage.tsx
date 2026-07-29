@@ -13,6 +13,8 @@ import { Dropzone } from "../components/ui/dropzone";
 import { ThemeSwitcher } from "../components/ThemeSwitcher";
 import { cn } from "../lib/utils";
 import { toast } from "../lib/use-toast";
+import { useTabRoute } from "../lib/use-tab-route";
+import { BackButton } from "../components/BackButton";
 import { listAllAppointments, listClinics, updateAppointment, listInquiries, sendInquiryMessage } from "../lib/clinic-api";
 import { listAllPets, type BackendPet } from "../lib/pet-api";
 import { listVaccinations } from "../lib/vaccination-api";
@@ -43,7 +45,8 @@ import {
 
 const VET_PROFILE_KEY = "companion_ai_vet_profile";
 
-type VetSection = "overview" | "approvals" | "follow-up-reminders" | "patients" | "inquiries" | "profile";
+const VET_SECTIONS = ["overview", "approvals", "follow-up-reminders", "patients", "inquiries", "profile"] as const;
+type VetSection = (typeof VET_SECTIONS)[number];
 
 interface AppointmentRow {
   id: string;
@@ -431,6 +434,20 @@ export function VeterinarianDashboardPage() {
 
   const headerTitle = sidebarItems.find((item) => item.id === activeSection)?.label ?? tr("navOverview");
 
+  // Section lives in the URL so the PWA's back gesture walks sections rather
+  // than dropping the vet out of the dashboard entirely.
+  const { selectTab, canGoBack, goBack } = useTabRoute<VetSection>({
+    basePath: "/vet-dashboard",
+    tabs: VET_SECTIONS,
+    defaultTab: "overview",
+    activeTab: activeSection,
+    setActiveTab: setActiveSection,
+  });
+
+  function handleSelectSection(section: VetSection) {
+    selectTab(section);
+  }
+
   const card = "rounded-xl border border-border/80 bg-surface p-4 dark:border-neutral-800 dark:bg-neutral-900";
 
   const statusVariant = (status: BackendAppointment["status"]) =>
@@ -615,7 +632,7 @@ export function VeterinarianDashboardPage() {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => { setActiveSection(item.id); setMobileNavOpen(false); }}
+                onClick={() => { handleSelectSection(item.id); setMobileNavOpen(false); }}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium transition-all duration-100",
                   activeSection === item.id
@@ -644,7 +661,7 @@ export function VeterinarianDashboardPage() {
         <div className="border-t border-border/80 p-3 dark:border-neutral-800">
           <button
             type="button"
-            onClick={() => setActiveSection("profile")}
+            onClick={() => handleSelectSection("profile")}
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-surface-tertiary dark:hover:bg-primary"
           >
             <Avatar className="h-7 w-7">
@@ -670,6 +687,7 @@ export function VeterinarianDashboardPage() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-border/80 bg-surface px-4 lg:px-8 dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-center gap-3">
+            {canGoBack && <BackButton onClick={goBack} label={tr("goBack")} />}
             <button
               onClick={() => setMobileNavOpen(!mobileNavOpen)}
               className="rounded-md p-1.5 text-accent-subtle hover:bg-surface-tertiary lg:hidden dark:hover:bg-primary"
@@ -683,7 +701,7 @@ export function VeterinarianDashboardPage() {
             <LanguageSwitcher compact />
             <ThemeSwitcher compact />
             <Badge variant="outline" className="hidden gap-1 sm:inline-flex"><Sparkles className="h-3 w-3" />{tr("aiActive")}</Badge>
-            <Avatar className="h-7 w-7 cursor-pointer" onClick={() => setActiveSection("profile")}>
+            <Avatar className="h-7 w-7 cursor-pointer" onClick={() => handleSelectSection("profile")}>
               {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt="Vet profile" /> : null}
               <AvatarFallback className="text-[11px]">{vetInitial}</AvatarFallback>
             </Avatar>
@@ -695,7 +713,7 @@ export function VeterinarianDashboardPage() {
             {sidebarItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => { setActiveSection(item.id); setMobileNavOpen(false); }}
+                onClick={() => { handleSelectSection(item.id); setMobileNavOpen(false); }}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium",
                   activeSection === item.id
@@ -755,7 +773,7 @@ export function VeterinarianDashboardPage() {
                       <div className="mt-3 space-y-2">
                         {highRiskPatients.length === 0 && <p className="text-[13px] text-accent-subtle">{loading ? tr("loadingData") : tr("noHighRiskPatients")}</p>}
                         {highRiskPatients.slice(0, 5).map((patient) => (
-                          <button key={patient.id} onClick={() => { setActiveSection("patients"); setSearchQuery(patient.petName); }} className="flex w-full items-center justify-between rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 text-left transition hover:border-red-300 dark:border-red-950/50 dark:bg-red-950/20">
+                          <button key={patient.id} onClick={() => { handleSelectSection("patients"); setSearchQuery(patient.petName); }} className="flex w-full items-center justify-between rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 text-left transition hover:border-red-300 dark:border-red-950/50 dark:bg-red-950/20">
                             <span>
                               <span className="block text-[13px] font-medium text-accent dark:text-white">{patient.petName}</span>
                               <span className="block text-[11px] text-accent-subtle">{patient.lastRisk?.disease} · {tr("highRiskRecent")}</span>

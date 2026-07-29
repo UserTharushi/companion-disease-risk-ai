@@ -4,6 +4,8 @@ import { getAccessToken, getProfileNameForRole, logout, saveProfileName } from "
 import { t, useLanguageStore } from "../lib/language";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { toast } from "../lib/use-toast";
+import { useTabRoute } from "../lib/use-tab-route";
+import { BackButton } from "../components/BackButton";
 import { ClinicDetailsPage, PetProfilePage } from "./PetOwnerFlowPages";
 import {
   Home, PawPrint, Brain, MapPin, User, LogOut, Plus, Trash2, Save,
@@ -58,7 +60,8 @@ interface AppointmentRecord extends BackendAppointment { slot: string; bookedAt:
 interface InquiryThreadMessageRecord { senderRole: "owner" | "vet"; body: string; createdAt: string; }
 interface SurgeonInquiryRecord { id: string; clinicId: string; clinicName: string; surgeonId: string; surgeonName: string; petId: string; petName: string; message: string; messages: InquiryThreadMessageRecord[]; status: "awaiting_vet" | "answered" | "closed"; remainingMessages: number; maxMessages: number; createdAt: string; }
 interface ChatMessage { id: string; sender: "owner" | "assistant"; text: string; }
-type Tab = "home" | "pets" | "ai" | "clinics" | "profile";
+const OWNER_TABS = ["home", "pets", "ai", "clinics", "profile"] as const;
+type Tab = (typeof OWNER_TABS)[number];
 type SlotLookup = Record<string, Record<string, Record<string, string>>>;
 
 const breedsBySpecies: Record<string, string[]> = {
@@ -896,7 +899,6 @@ export function PetOwnerDashboardPage() {
     while (cells.length % 7 !== 0) cells.push(null);
     return Array.from({ length: cells.length / 7 }, (_, weekIndex) => cells.slice(weekIndex * 7, weekIndex * 7 + 7));
   }, [ownerCalendarMonth, ownerCalendarYear]);
-  const requestedTab = new URLSearchParams(location.search).get("tab");
   const editingPetId = new URLSearchParams(location.search).get("edit");
   const petProfileRoutePetId = location.pathname.match(/^\/pets\/profile\/([^/]+)$/)?.[1];
   const clinicRouteClinicId = location.pathname.match(/^\/pets\/clinic\/([^/]+)$/)?.[1];
@@ -911,14 +913,6 @@ export function PetOwnerDashboardPage() {
             ? (language === "si" ? "සුරතල් පැතිකඩ සංස්කරණය" : language === "ta" ? "சுயவிவரத்தைத் திருத்து" : "Edit Pet Profile")
             : (language === "si" ? "සුරතල් පැතිකඩක් සාදන්න" : language === "ta" ? "சுயவிவரத்தை உருவாக்கு" : "Create Pet Profile"))
       : tr(navItems.find((n) => n.id === activeTab)?.labelKey ?? "navOverview");
-
-  useEffect(() => {
-    if (!requestedTab) return;
-    const validTabs: Tab[] = ["home", "pets", "ai", "clinics", "profile"];
-    if (validTabs.includes(requestedTab as Tab)) {
-      setActiveTab(requestedTab as Tab);
-    }
-  }, [requestedTab]);
 
   useEffect(() => {
     if (!isCreatePetRoute) return;
@@ -945,9 +939,18 @@ export function PetOwnerDashboardPage() {
     }));
   }, [isCreatePetRoute, editingPetId, pets]);
 
+  // The section now lives in the URL, so the PWA's back gesture walks sections
+  // instead of dropping the user out of the dashboard.
+  const { selectTab, canGoBack, goBack } = useTabRoute<Tab>({
+    basePath: "/pets",
+    tabs: OWNER_TABS,
+    defaultTab: "home",
+    activeTab,
+    setActiveTab,
+  });
+
   function handleSelectTab(tab: Tab) {
-    setActiveTab(tab);
-    if (isFlowRoute) navigate("/pets");
+    selectTab(tab);
   }
 
   const resolvedDisplayName = profile.displayName.trim() || fallbackName;
@@ -1015,6 +1018,7 @@ export function PetOwnerDashboardPage() {
         {/* Header */}
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-border/80 bg-surface px-4 lg:px-8 dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-center gap-3">
+            {canGoBack && <BackButton onClick={goBack} label={tr("goBack")} />}
             <button onClick={() => setMobileNavOpen(!mobileNavOpen)} className="rounded-md p-1.5 text-accent-subtle hover:bg-surface-tertiary lg:hidden dark:hover:bg-primary"><Menu className="h-5 w-5" /></button>
             <div className="hidden h-5 w-px bg-neutral-200 lg:block dark:bg-neutral-700" />
             <h1 className="text-[13px] font-semibold text-accent dark:text-white">{headerTitle}</h1>
@@ -1050,11 +1054,11 @@ export function PetOwnerDashboardPage() {
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1200px] px-4 py-6 lg:px-8 lg:py-8">
             {petProfileRoutePetId && (
-              <PetProfilePage embedded petIdOverride={petProfileRoutePetId} onBack={() => navigate("/pets")} />
+              <PetProfilePage embedded petIdOverride={petProfileRoutePetId} onBack={goBack} />
             )}
 
             {clinicRouteClinicId && (
-              <ClinicDetailsPage embedded clinicIdOverride={clinicRouteClinicId} onBack={() => navigate("/pets")} />
+              <ClinicDetailsPage embedded clinicIdOverride={clinicRouteClinicId} onBack={goBack} />
             )}
 
             {isCreatePetRoute && (
@@ -1158,11 +1162,11 @@ export function PetOwnerDashboardPage() {
                     {/* Stats row */}
                     <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
                       {[
-                        { label: tr("navPets"), value: pets.length, icon: PawPrint, onClick: () => setActiveTab("pets") },
-                        { label: tr("appointments"), value: activeAppts, icon: Calendar, onClick: () => setActiveTab("clinics") },
-                        { label: tr("assessments"), value: predictions.length, icon: Brain, onClick: () => setActiveTab("ai") },
+                        { label: tr("navPets"), value: pets.length, icon: PawPrint, onClick: () => handleSelectTab("pets") },
+                        { label: tr("appointments"), value: activeAppts, icon: Calendar, onClick: () => handleSelectTab("clinics") },
+                        { label: tr("assessments"), value: predictions.length, icon: Brain, onClick: () => handleSelectTab("ai") },
                         // Health score derived from the most recent assessment's risk (— when none yet)
-                        { label: tr("healthScore"), value: predictions.length === 0 ? "—" : (predictions[0].risk === "high" ? "45%" : predictions[0].risk === "moderate" ? "70%" : "90%"), icon: Activity, onClick: () => setActiveTab("ai") },
+                        { label: tr("healthScore"), value: predictions.length === 0 ? "—" : (predictions[0].risk === "high" ? "45%" : predictions[0].risk === "moderate" ? "70%" : "90%"), icon: Activity, onClick: () => handleSelectTab("ai") },
                       ].map((s) => (
                         <button key={s.label} onClick={s.onClick} className="group rounded-xl border border-border/80 bg-surface dark:border-neutral-800 dark:bg-neutral-900 p-4 text-left transition-all hover:border-border-strong hover:shadow-sm">
                           <div className="flex items-center justify-between">
@@ -1235,7 +1239,7 @@ export function PetOwnerDashboardPage() {
                               <p className="text-[12px] text-amber-700/70">{language === "si" ? "එන්නත් වාර්තා පරීක්ෂා කර ඉදිරි බූස්ටර වෙන් කරන්න." : language === "ta" ? "தடுப்பூசி பதிவுகளைச் சரிபார்த்து அடுத்த பூஸ்டரை பதிவு செய்யவும்." : "Check vaccination records and schedule upcoming boosters."}</p>
                             </div>
                           </div>
-                          <Button size="sm" variant="secondary" onClick={() => setActiveTab("clinics")}>
+                          <Button size="sm" variant="secondary" onClick={() => handleSelectTab("clinics")}>
                             {language === "si" ? "වෙන් කරන්න" : language === "ta" ? "பதிவு செய்" : "Schedule"} <ArrowRight className="h-3 w-3" />
                           </Button>
                         </div>
@@ -1285,7 +1289,7 @@ export function PetOwnerDashboardPage() {
                             <p className="mt-0.5 text-[12px] leading-relaxed text-red-700/80">
                               {highRisk.pet}'s {highRisk.title.toLowerCase()} assessment shows <span className="font-medium text-red-800">high risk</span> with {highRisk.confidence}% confidence.
                             </p>
-                            <Button size="sm" className="mt-3 bg-red-600 hover:bg-red-700" onClick={() => setActiveTab("clinics")}>
+                            <Button size="sm" className="mt-3 bg-red-600 hover:bg-red-700" onClick={() => handleSelectTab("clinics")}>
                               Book appointment <ArrowRight className="h-3 w-3" />
                             </Button>
                           </div>
@@ -1373,7 +1377,7 @@ export function PetOwnerDashboardPage() {
                         <h3 className="text-[15px] font-semibold text-accent">{tr("riskAssessments")}</h3>
                         <Badge variant="info" className="gap-1"><Sparkles className="h-2.5 w-2.5" />AI</Badge>
                       </div>
-                      <button onClick={() => setActiveTab("ai")} className="inline-flex items-center gap-1 text-[12px] font-medium text-accent-subtle hover:text-accent transition-colors">
+                      <button onClick={() => handleSelectTab("ai")} className="inline-flex items-center gap-1 text-[12px] font-medium text-accent-subtle hover:text-accent transition-colors">
                         {tr("history")} <ChevronRight className="h-3 w-3" />
                       </button>
                     </div>

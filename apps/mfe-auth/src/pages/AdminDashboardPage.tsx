@@ -39,6 +39,8 @@ import {
   type Ticket,
 } from "../lib/admin-api";
 import { toast } from "../lib/use-toast";
+import { useTabRoute } from "../lib/use-tab-route";
+import { BackButton } from "../components/BackButton";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -75,7 +77,8 @@ import {
 
 const ADMIN_PROFILE_KEY = "companion_ai_admin_profile";
 
-type AdminSection = "overview" | "approvals" | "operations" | "clinics" | "veterinarians" | "add-veterinarian" | "governance" | "profile";
+const ADMIN_SECTIONS = ["overview", "approvals", "operations", "clinics", "veterinarians", "add-veterinarian", "governance", "profile"] as const;
+type AdminSection = (typeof ADMIN_SECTIONS)[number];
 
 // ApprovalItem, Ticket and AuditEntry now come from ../lib/admin-api — the
 // shapes are owned by admin-service rather than redeclared per page.
@@ -350,8 +353,18 @@ export function AdminDashboardPage() {
       ? tr("addVet")
       : sidebarItems.find((item) => item.id === activeSection)?.label ?? t(language, "overview");
 
+  // Section lives in the URL so the PWA's back gesture walks sections rather
+  // than dropping the admin out of the dashboard entirely.
+  const { selectTab, canGoBack, goBack } = useTabRoute<AdminSection>({
+    basePath: "/admin-dashboard",
+    tabs: ADMIN_SECTIONS,
+    defaultTab: "overview",
+    activeTab: activeSection,
+    setActiveTab: setActiveSection,
+  });
+
   function handleSelectSection(section: AdminSection) {
-    setActiveSection(section);
+    selectTab(section);
     setMobileNavOpen(false);
   }
 
@@ -666,7 +679,7 @@ export function AdminDashboardPage() {
       gender: "", dateOfBirth: "", specialization: "", address: "", photoDataUrl: "", initialPassword: "",
     });
     toast({ title: `${tr("addVet")} ✓`, description: normalizedEmail, variant: "success" });
-    setActiveSection("veterinarians");
+    handleSelectSection("veterinarians");
   }
 
   async function saveVetEdit() {
@@ -885,6 +898,7 @@ export function AdminDashboardPage() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-border/80 bg-surface px-4 lg:px-8 dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-center gap-3">
+            {canGoBack && <BackButton onClick={goBack} label={tr("goBack")} />}
             <button
               onClick={() => setMobileNavOpen(!mobileNavOpen)}
               className="rounded-md p-1.5 text-accent-subtle hover:bg-surface-tertiary lg:hidden dark:hover:bg-primary"
