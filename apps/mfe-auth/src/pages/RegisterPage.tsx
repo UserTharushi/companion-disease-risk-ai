@@ -15,20 +15,23 @@ import { Alert } from "../components/ui/alert";
 import { cn } from "../lib/utils";
 import { t, useLanguageStore } from "../lib/language";
 
+// Messages are translation keys, resolved at render so validation errors
+// follow the reader's language instead of being fixed at module load.
 const registerSchema = z.object({
-  displayName: z.string().min(2, "At least 2 characters"),
-  email: z.string().trim().email("Enter a valid email address"),
-  phoneNumber: z.string().trim().regex(/^\d{10}$/, "Must be exactly 10 digits"),
-  password: z.string().min(9, "At least 9 characters"),
-  confirmPassword: z.string().min(9, "Confirm your password"),
+  displayName: z.string().min(2, "errNameMin2"),
+  email: z.string().trim().email("errEmailInvalid"),
+  phoneNumber: z.string().trim().regex(/^\d{10}$/, "errPhone10"),
+  password: z.string().min(9, "errPasswordMin9"),
+  confirmPassword: z.string().min(9, "errConfirmPassword"),
   role: z.enum(["pet-owner", "admin"]),
-}).refine((d) => d.password === d.confirmPassword, { message: "Passwords don't match", path: ["confirmPassword"] });
+}).refine((d) => d.password === d.confirmPassword, { message: "errPasswordsNoMatch", path: ["confirmPassword"] });
 
 type RegisterForm = z.infer<typeof registerSchema>;
 
 export function RegisterPage() {
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,15 +51,15 @@ export function RegisterPage() {
 
   const password = watch("password", "");
   const checks = [
-    { label: "9+ characters", ok: password.length >= 9 },
-    { label: "Uppercase", ok: /[A-Z]/.test(password) },
-    { label: "Number", ok: /\d/.test(password) },
+    { key: "pwCheckLength", ok: password.length >= 9 },
+    { key: "pwCheckUpper", ok: /[A-Z]/.test(password) },
+    { key: "pwCheckNumber", ok: /\d/.test(password) },
   ];
   const strength = checks.filter((c) => c.ok).length;
 
   const onSubmit = handleSubmit(async (values) => {
     if (!agreedToTerms) {
-      setErrorMessage("Please agree to the terms to continue.");
+      setErrorMessage(tr("agreeTermsFirst"));
       return;
     }
     try {
@@ -71,11 +74,11 @@ export function RegisterPage() {
       });
       saveUserCredentials(values.email, values.role);
       saveProfileName(values.displayName, values.role);
-      toast({ title: "Account created", description: "Sign in to continue.", variant: "success" });
+      toast({ title: tr("accountCreatedToast"), description: tr("signInToContinue"), variant: "success" });
       navigate("/auth/login", { replace: true });
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Registration failed";
-      setErrorMessage(msg === "role_already_assigned_for_email" ? "This email is registered with a different role." : msg);
+      const msg = error instanceof Error ? error.message : tr("registrationFailed");
+      setErrorMessage(msg === "role_already_assigned_for_email" ? tr("emailDifferentRole") : msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -84,51 +87,45 @@ export function RegisterPage() {
   return (
     <AuthLayout>
       <div className="animate-slide-up">
-        <h1 className="text-xl font-semibold tracking-tight text-accent">{t(language, "createAccount")}</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-accent">{tr("createAccount")}</h1>
         <p className="mt-1 text-sm text-accent-subtle">
-          {language === "si" ? "දැනටමත් ගිණුමක් තිබේද?" : language === "ta" ? "ஏற்கனவே கணக்கு உள்ளதா?" : "Already have an account?"}{" "}
-          <Link to="/auth/login" className="font-medium text-accent hover:underline">Sign in</Link>
+          {tr("alreadyHaveAccount")}{" "}
+          <Link to="/auth/login" className="font-medium text-accent hover:underline">{tr("signIn")}</Link>
         </p>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-3.5">
           {/* Name */}
           <div className="space-y-1.5">
-            <Label htmlFor="displayName">{language === "si" ? "සම්පූර්ණ නම" : language === "ta" ? "முழு பெயர்" : "Full name"}</Label>
-            <Input {...register("displayName")} id="displayName" autoComplete="name" placeholder="Jane Doe" />
-            {errors.displayName && <p className="text-xs text-red-600">{errors.displayName.message}</p>}
+            <Label htmlFor="displayName">{tr("fullNameLabel")}</Label>
+            <Input {...register("displayName")} id="displayName" autoComplete="name" placeholder={tr("fullNamePlaceholder")} />
+            {errors.displayName && <p className="text-xs text-red-600">{tr(errors.displayName.message ?? "")}</p>}
           </div>
 
           {/* Role */}
           <div className="space-y-1.5">
-            <Label htmlFor="role">{t(language, "role")}</Label>
+            <Label htmlFor="role">{tr("role")}</Label>
             <select
               {...register("role")}
               id="role"
               className="flex h-9 w-full appearance-none rounded-lg border border-border bg-surface px-3 text-sm text-accent shadow-xs transition-colors focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-950/5"
               onChange={(e) => localStorage.setItem("companion_ai_selected_role", e.target.value)}
             >
-              <option value="pet-owner">{language === "si" ? "සුරතල් හිමිකරු" : language === "ta" ? "செல்லப்பிராணி உரிமையாளர்" : "Pet Owner"}</option>
-              <option value="admin">{language === "si" ? "ඇඩ්මින්" : language === "ta" ? "நிர்வாகி" : "Platform Admin"}</option>
+              <option value="pet-owner">{tr("petOwnerOption")}</option>
+              <option value="admin">{tr("adminOption")}</option>
             </select>
-            <p className="text-xs text-accent-subtle">
-              {language === "si"
-                ? "වෙට් ගිණුම් නිර්මාණය කරන්නේ ඇඩ්මින් විසිනි."
-                : language === "ta"
-                  ? "வெட் கணக்குகளை நிர்வாகி மட்டும் உருவாக்குகிறார்."
-                  : "Veterinarian accounts are created by admin only."}
-            </p>
+            <p className="text-xs text-accent-subtle">{tr("vetAdminOnly")}</p>
           </div>
 
           {/* Email */}
           <div className="space-y-1.5">
-            <Label htmlFor="email">{t(language, "email")}</Label>
-            <Input {...register("email")} id="email" type="email" autoComplete="email" placeholder="you@company.com" />
-            {errors.email && <p className="text-xs text-red-600">{errors.email.message}</p>}
+            <Label htmlFor="email">{tr("email")}</Label>
+            <Input {...register("email")} id="email" type="email" autoComplete="email" placeholder={tr("emailPlaceholder")} />
+            {errors.email && <p className="text-xs text-red-600">{tr(errors.email.message ?? "")}</p>}
           </div>
 
           {/* Phone */}
           <div className="space-y-1.5">
-            <Label htmlFor="phoneNumber">{language === "si" ? "දුරකථන අංකය" : language === "ta" ? "தொலைபேசி எண்" : "Phone number"}</Label>
+            <Label htmlFor="phoneNumber">{tr("phoneNumberLabel")}</Label>
             <Input
               {...register("phoneNumber")}
               id="phoneNumber"
@@ -139,19 +136,19 @@ export function RegisterPage() {
               onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "").slice(0, 10); }}
               placeholder="0712345678"
             />
-            {errors.phoneNumber && <p className="text-xs text-red-600">{errors.phoneNumber.message}</p>}
+            {errors.phoneNumber && <p className="text-xs text-red-600">{tr(errors.phoneNumber.message ?? "")}</p>}
           </div>
 
           {/* Password */}
           <div className="space-y-1.5">
-            <Label htmlFor="password">{t(language, "password")}</Label>
+            <Label htmlFor="password">{tr("password")}</Label>
             <div className="relative">
               <Input
                 {...register("password")}
                 id="password"
                 type={showPassword ? "text" : "password"}
                 autoComplete="new-password"
-                placeholder="Create a password"
+                placeholder={tr("createPasswordPlaceholder")}
                 className="pr-9"
               />
               <button
@@ -163,7 +160,7 @@ export function RegisterPage() {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            {errors.password && <p className="text-xs text-red-600">{errors.password.message}</p>}
+            {errors.password && <p className="text-xs text-red-600">{tr(errors.password.message ?? "")}</p>}
 
             {password.length > 0 && (
               <div className="space-y-1.5 pt-0.5">
@@ -174,9 +171,9 @@ export function RegisterPage() {
                 </div>
                 <div className="flex gap-3">
                   {checks.map((c) => (
-                    <span key={c.label} className={cn("inline-flex items-center gap-1 text-[11px]", c.ok ? "text-accent-muted" : "text-neutral-300")}>
+                    <span key={c.key} className={cn("inline-flex items-center gap-1 text-[11px]", c.ok ? "text-accent-muted" : "text-neutral-300")}>
                       <Check className={cn("h-2.5 w-2.5", c.ok ? "opacity-100" : "opacity-0")} />
-                      {c.label}
+                      {tr(c.key)}
                     </span>
                   ))}
                 </div>
@@ -186,9 +183,9 @@ export function RegisterPage() {
 
           {/* Confirm */}
           <div className="space-y-1.5">
-            <Label htmlFor="confirmPassword">{language === "si" ? "මුරපදය තහවුරු කරන්න" : language === "ta" ? "கடவுச்சொல்லை உறுதிப்படுத்தவும்" : "Confirm password"}</Label>
-            <Input {...register("confirmPassword")} id="confirmPassword" type="password" autoComplete="new-password" placeholder="Re-enter password" />
-            {errors.confirmPassword && <p className="text-xs text-red-600">{errors.confirmPassword.message}</p>}
+            <Label htmlFor="confirmPassword">{tr("confirmPasswordLabel")}</Label>
+            <Input {...register("confirmPassword")} id="confirmPassword" type="password" autoComplete="new-password" placeholder={tr("reenterPasswordPlaceholder")} />
+            {errors.confirmPassword && <p className="text-xs text-red-600">{tr(errors.confirmPassword.message ?? "")}</p>}
           </div>
 
           {/* Terms */}
@@ -200,11 +197,8 @@ export function RegisterPage() {
               className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-neutral-950"
             />
             <span className="text-xs leading-relaxed text-accent-subtle">
-              {language === "si"
-                ? <>මම <span className="text-accent">සේවා කොන්දේසි</span> සහ <span className="text-accent">රහස්‍යතා ප්‍රතිපත්තිය</span> වලට එකඟ වෙමි</>
-                : language === "ta"
-                  ? <>நான் <span className="text-accent">சேவை விதிமுறைகள்</span> மற்றும் <span className="text-accent">தனியுரிமைக் கொள்கை</span>யை ஏற்கிறேன்</>
-                  : <>I agree to the <span className="text-accent">Terms of Service</span> and <span className="text-accent">Privacy Policy</span></>}
+              {tr("termsAgreePrefix")} <span className="text-accent">{tr("termsOfService")}</span>{" "}
+              {tr("termsAnd")} <span className="text-accent">{tr("privacyPolicy")}</span>
             </span>
           </label>
 
@@ -216,7 +210,7 @@ export function RegisterPage() {
           )}
 
           <Button type="submit" size="lg" className="w-full" disabled={isSubmitting || !agreedToTerms}>
-            {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> {t(language, "createAccount")}...</> : t(language, "createAccount")}
+            {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> {tr("createAccount")}...</> : tr("createAccount")}
           </Button>
         </form>
       </div>

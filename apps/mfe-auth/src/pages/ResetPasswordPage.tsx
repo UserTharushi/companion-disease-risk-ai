@@ -10,12 +10,14 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Alert } from "../components/ui/alert";
 import { resetPassword } from "../lib/auth-api";
+import { t, useLanguageStore } from "../lib/language";
 
+// Messages are translation keys, resolved at render — see ForgotPasswordPage.
 const schema = z.object({
-  password: z.string().min(8, "Minimum 8 characters"),
-  confirmPassword: z.string().min(8, "Minimum 8 characters"),
+  password: z.string().min(8, "errPasswordMin8"),
+  confirmPassword: z.string().min(8, "errPasswordMin8"),
 }).refine((values) => values.password === values.confirmPassword, {
-  message: "Passwords do not match",
+  message: "errPasswordsNoMatch",
   path: ["confirmPassword"],
 });
 
@@ -23,6 +25,8 @@ type FormData = z.infer<typeof schema>;
 
 export function ResetPasswordPage() {
   const navigate = useNavigate();
+  const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
   const [searchParams] = useSearchParams();
   const token = useMemo(() => searchParams.get("token") || "", [searchParams]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -38,12 +42,12 @@ export function ResetPasswordPage() {
       setErrorMessage(null);
       setIsSubmitting(true);
       if (!token) {
-        throw new Error("Missing reset token");
+        throw new Error(tr("missingResetToken"));
       }
       await resetPassword({ token, password: values.password });
       setCompleted(true);
     } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "Something went wrong");
+      setErrorMessage(error instanceof Error ? error.message : tr("errSomethingWrong"));
     } finally {
       setIsSubmitting(false);
     }
@@ -58,7 +62,7 @@ export function ResetPasswordPage() {
           className="mb-6 inline-flex items-center gap-1.5 text-sm text-accent-subtle transition hover:text-accent"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Back to sign in
+          {tr("backToSignIn")}
         </button>
 
         {completed ? (
@@ -66,38 +70,38 @@ export function ResetPasswordPage() {
             <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50">
               <CheckCircle2 className="h-5 w-5 text-emerald-600" />
             </div>
-            <h1 className="text-xl font-semibold tracking-tight text-accent">Password updated</h1>
-            <p className="mt-1.5 text-sm text-accent-subtle">Your password has been reset successfully. You can sign in now.</p>
+            <h1 className="text-xl font-semibold tracking-tight text-accent">{tr("passwordUpdated")}</h1>
+            <p className="mt-1.5 text-sm text-accent-subtle">{tr("passwordResetSuccess")}</p>
             <div className="mt-8">
               <Button size="lg" className="w-full" asChild>
-                <Link to="/auth/login">Return to sign in</Link>
+                <Link to="/auth/login">{tr("returnToSignIn")}</Link>
               </Button>
             </div>
           </div>
         ) : (
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-accent">Set a new password</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-accent">{tr("setNewPassword")}</h1>
             <p className="mt-1.5 text-sm text-accent-subtle">
-              Choose a new password for your account.
+              {tr("chooseNewPassword")}
             </p>
 
             <form onSubmit={onSubmit} className="mt-6 space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="password">New password</Label>
-                <Input {...register("password")} id="password" type="password" autoComplete="new-password" placeholder="Enter new password" />
-                {errors.password && <p className="text-xs text-red-600">{errors.password.message}</p>}
+                <Label htmlFor="password">{tr("newPasswordLabel")}</Label>
+                <Input {...register("password")} id="password" type="password" autoComplete="new-password" placeholder={tr("newPasswordPlaceholder")} />
+                {errors.password && <p className="text-xs text-red-600">{tr(errors.password.message ?? "")}</p>}
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="confirmPassword">Confirm new password</Label>
-                <Input {...register("confirmPassword")} id="confirmPassword" type="password" autoComplete="new-password" placeholder="Confirm new password" />
-                {errors.confirmPassword && <p className="text-xs text-red-600">{errors.confirmPassword.message}</p>}
+                <Label htmlFor="confirmPassword">{tr("confirmNewPasswordLabel")}</Label>
+                <Input {...register("confirmPassword")} id="confirmPassword" type="password" autoComplete="new-password" placeholder={tr("confirmNewPasswordPlaceholder")} />
+                {errors.confirmPassword && <p className="text-xs text-red-600">{tr(errors.confirmPassword.message ?? "")}</p>}
               </div>
 
               {!token && (
                 <Alert variant="danger" className="animate-slide-up">
                   <AlertTriangle />
-                  <span>Missing reset token. Please request a new reset link.</span>
+                  <span>{tr("missingResetToken")}</span>
                 </Alert>
               )}
 
@@ -109,12 +113,12 @@ export function ResetPasswordPage() {
               )}
 
               <Button type="submit" size="lg" className="w-full" disabled={isSubmitting || !token}>
-                {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Updating...</> : "Update password"}
+                {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> {tr("updatingAction")}</> : tr("updatePasswordAction")}
               </Button>
             </form>
 
             <p className="mt-6 text-center text-sm text-accent-subtle">
-              Remembered it already? <Link to="/auth/login" className="font-medium text-accent hover:underline">Sign in</Link>
+              {tr("rememberedAlready")} <Link to="/auth/login" className="font-medium text-accent hover:underline">{tr("signIn")}</Link>
             </p>
           </div>
         )}

@@ -20,9 +20,11 @@ import { Alert } from "../components/ui/alert";
 import { AlertTriangle } from "lucide-react";
 import { getAppLanguage, t, useLanguageStore } from "../lib/language";
 
+// Messages are translation keys, resolved at render so validation errors
+// follow the reader's language instead of being fixed at module load.
 const loginSchema = z.object({
-  email: z.string().email("Enter a valid email address"),
-  password: z.string().min(6, "Minimum 6 characters"),
+  email: z.string().email("errEmailInvalid"),
+  password: z.string().min(6, "errPasswordMin6"),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
@@ -30,6 +32,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 export function LoginPage() {
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
   const verifiedRole = getVerifiedRole();
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -55,7 +58,7 @@ export function LoginPage() {
       // The server is the source of truth for the account's role — route by it
       const authenticatedRole = normalizeUserRole(role);
       if (!authenticatedRole) {
-        setErrorMessage("Unsupported account role returned by the server.");
+        setErrorMessage(tr("unsupportedRole"));
         return;
       }
 
@@ -70,7 +73,7 @@ export function LoginPage() {
         .then(({ updateMyProfile }) => updateMyProfile(token, { preferredLanguage: getAppLanguage() }))
         .catch(() => undefined);
 
-      toast({ title: "Signed in", variant: "success" });
+      toast({ title: tr("signedInToast"), variant: "success" });
       if (mustChangePassword) {
         // Admin-provisioned account with a temporary password — force a change
         navigate("/auth/change-password", { replace: true });
@@ -78,7 +81,7 @@ export function LoginPage() {
       }
       redirectToPets(navigate);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Authentication failed";
+      const msg = error instanceof Error ? error.message : tr("authFailed");
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
@@ -90,31 +93,29 @@ export function LoginPage() {
       <div className="animate-slide-up">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-accent">Sign in</h1>
-            <p className="mt-1 text-sm text-accent-subtle">
-              {language === "si" ? "ඉදිරියට යාම සඳහා ඔබේ තොරතුරු ඇතුළත් කරන්න" : language === "ta" ? "தொடர உங்கள் விவரங்களை உள்ளிடவும்" : "Enter your credentials to continue"}
-            </p>
+            <h1 className="text-xl font-semibold tracking-tight text-accent">{tr("signIn")}</h1>
+            <p className="mt-1 text-sm text-accent-subtle">{tr("enterCredentials")}</p>
           </div>
         </div>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{tr("email")}</Label>
             <Input
               {...register("email")}
               id="email"
               type="email"
               autoComplete="email"
-              placeholder="you@company.com"
+              placeholder={tr("emailPlaceholder")}
             />
-            {errors.email && <p className="text-xs text-red-600">{errors.email.message}</p>}
+            {errors.email && <p className="text-xs text-red-600">{tr(errors.email.message ?? "")}</p>}
           </div>
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{tr("password")}</Label>
               <Link to="/auth/forgot-password" className="text-xs text-accent-subtle hover:text-accent transition-colors">
-                {language === "si" ? "මුරපදය අමතකද?" : language === "ta" ? "கடவுச்சொல் மறந்துவிட்டதா?" : "Forgot password?"}
+                {tr("forgotPasswordQ")}
               </Link>
             </div>
             <div className="relative">
@@ -123,7 +124,7 @@ export function LoginPage() {
                 id="password"
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
-                placeholder="Enter password"
+                placeholder={tr("passwordPlaceholder")}
                 className="pr-9"
               />
               <button
@@ -135,7 +136,7 @@ export function LoginPage() {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            {errors.password && <p className="text-xs text-red-600">{errors.password.message}</p>}
+            {errors.password && <p className="text-xs text-red-600">{tr(errors.password.message ?? "")}</p>}
           </div>
 
           {errorMessage && (
@@ -146,21 +147,21 @@ export function LoginPage() {
           )}
 
           <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> {t(language, "signIn")}...</> : t(language, "signIn")}
+            {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> {tr("signIn")}...</> : tr("signIn")}
           </Button>
         </form>
 
         <div className="relative my-6">
           <Separator />
           <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-surface-secondary px-3 text-xs text-accent-faint lg:bg-surface">
-            {language === "si" ? "හෝ" : language === "ta" ? "அல்லது" : "or"}
+            {tr("orDivider")}
           </span>
         </div>
 
         <p className="text-center text-sm text-accent-subtle">
-          {language === "si" ? "ගිණුමක් නැද්ද?" : language === "ta" ? "கணக்கு இல்லையா?" : "Don't have an account?"} {" "}
+          {tr("noAccountYet")}{" "}
           <Link to="/auth/register" className="font-medium text-accent hover:underline">
-            {t(language, "createAccount")}
+            {tr("createAccount")}
           </Link>
         </p>
       </div>

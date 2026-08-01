@@ -6,36 +6,23 @@ import { AuthLayout } from "../components/AuthLayout";
 import { Button } from "../components/ui/button";
 import { Progress } from "../components/ui/progress";
 import { cn } from "../lib/utils";
+import { t, useLanguageStore } from "../lib/language";
 import onboardingAiImage from "../assets/images/onboarding-ai.jpg";
 import onboardingVetImage from "../assets/images/auth-vet-consult.jpg";
 import onboardingVaccineImage from "../assets/images/onboarding-vaccine.jpg";
 
+// Copy lives in the dictionary; only the keys are held here so the slides
+// re-render in the reader's language rather than being fixed at module load.
 const slides = [
-  {
-    title: "AI Disease Prediction",
-    description: "Leverage advanced machine learning to detect potential health risks early with clear confidence scores and actionable recommendations.",
-    icon: Brain,
-    image: onboardingVetImage,
-    badge: "SYMPTOM SCAN ACTIVE",
-  },
-  {
-    title: "Smart Vet Recommendation",
-    description: "Get personalized suggestions for trusted clinics near you based on your pet's symptoms, location, and medical history.",
-    icon: MapPin,
-    image: onboardingAiImage,
-    badge: "NEARBY CLINICS",
-  },
-  {
-    title: "Vaccination & Health Tracking",
-    description: "Track vaccinations, checkups, and preventive care with timely reminders so your pet's health plan always stays up to date.",
-    icon: Syringe,
-    image: onboardingVaccineImage,
-    badge: "VACCINE REMINDERS",
-  },
+  { titleKey: "onbSlide1Title", bodyKey: "onbSlide1Body", badgeKey: "onbSlide1Badge", icon: Brain, image: onboardingVetImage },
+  { titleKey: "onbSlide2Title", bodyKey: "onbSlide2Body", badgeKey: "onbSlide2Badge", icon: MapPin, image: onboardingAiImage },
+  { titleKey: "onbSlide3Title", bodyKey: "onbSlide3Body", badgeKey: "onbSlide3Badge", icon: Syringe, image: onboardingVaccineImage },
 ];
 
 export function OnboardingPage() {
   const navigate = useNavigate();
+  const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
   const [step, setStep] = useState(0);
   if (!hasStartedSession()) return <Navigate to="/auth" replace />;
   if (!hasSeenInfoStep()) return <Navigate to="/auth/info" replace />;
@@ -55,9 +42,9 @@ export function OnboardingPage() {
       <div className="animate-slide-up">
         <div className="mb-6 space-y-2">
           <div className="flex items-center justify-between text-xs text-accent-faint">
-            <span>Step 2 of 3</span>
+            <span>{tr("onboardingStepLabel")}</span>
             <button type="button" onClick={finish} className="font-medium text-accent-muted hover:text-accent transition-colors">
-              Skip
+              {tr("skipAction")}
             </button>
           </div>
           <Progress value={progressValue} />
@@ -66,11 +53,11 @@ export function OnboardingPage() {
         {/* Slide content */}
         <div className="min-h-[280px]">
           <div className="relative mb-4 overflow-hidden rounded-3xl border border-border bg-surface shadow-sm">
-            <img src={slide.image} alt={slide.title} className="h-52 w-full object-cover" />
+            <img src={slide.image} alt={tr(slide.titleKey)} className="h-52 w-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/5 to-transparent" />
             <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-primary shadow-sm">
               <slide.icon className="h-3.5 w-3.5" />
-              <span>{slide.badge}</span>
+              <span>{tr(slide.badgeKey)}</span>
             </div>
           </div>
           <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-info-light">
@@ -78,10 +65,10 @@ export function OnboardingPage() {
           </div>
 
           <h1 className="font-heading text-2xl font-semibold tracking-tight text-accent">
-            {slide.title}
+            {tr(slide.titleKey)}
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-accent-subtle">
-            {slide.description}
+            {tr(slide.bodyKey)}
           </p>
         </div>
 
@@ -108,7 +95,7 @@ export function OnboardingPage() {
             </Button>
           )}
           <Button size="lg" className="flex-1" onClick={() => isLast ? finish() : setStep((s) => s + 1)}>
-            {isLast ? "Continue" : "Next"}
+            {isLast ? tr("continueAction") : tr("nextAction")}
             <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
