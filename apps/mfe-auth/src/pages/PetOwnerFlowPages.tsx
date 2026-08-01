@@ -6,7 +6,7 @@ import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
 import { ThemeSwitcher } from "../components/ThemeSwitcher";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
-import { useLanguageStore } from "../lib/language";
+import { t, useLanguageStore } from "../lib/language";
 import { getOwnerId, listOwnerPets, type BackendPet } from "../lib/pet-api";
 import { createAppointment, listClinics } from "../lib/clinic-api";
 import { submitPrediction, getPrediction, submitPredictionFeedback, type PredictionResult } from "../lib/prediction-api";
@@ -219,11 +219,13 @@ function EmptyPetState({
   message: string;
 }) {
   const navigate = useNavigate();
+  const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
 
   return (
     <PageShell title={title}>
       <section className={`${cardClassP6} text-center`}>
-        <h2 className="text-2xl font-semibold text-accent">No pets yet</h2>
+        <h2 className="text-2xl font-semibold text-accent">{tr("noPetsYet")}</h2>
         <p className="mt-2 text-sm text-accent-subtle">{message}</p>
         <Button size="xl" className="mt-5" onClick={() => navigate("/pets/create")}>
           Add Pet
@@ -264,6 +266,7 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
   const { petId } = useParams();
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
   const pets = useFlowPets();
   const resolvedPetId = petIdOverride ?? petId;
   const pet = pets.find((p) => p.id === resolvedPetId) ?? pets[0];
@@ -335,7 +338,7 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
   if (!pet) {
     return (
       <EmptyPetState
-        title="Pet Profile"
+        title={tr("petProfileTitle")}
         message={language === "si" ? "සුරතල් පැතිකඩක් බැලීමට පෙර සුරතලෙකු එක් කරන්න." : language === "ta" ? "செல்லப்பிராணி சுயவிவரத்தைப் பார்க்க முன்னர் ஒரு செல்லப்பிராணியைச் சேர்க்கவும்." : "Add a pet before viewing profile details."}
       />
     );
@@ -536,7 +539,7 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
 
       <section className={cardClassP5}>
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-[15px] font-semibold text-accent">Vaccination History</h3>
+          <h3 className="text-[15px] font-semibold text-accent">{tr("vaccinationHistoryTitle")}</h3>
           <button className="text-sm font-semibold text-primary" onClick={() => setShowAddVaccine((v) => !v)}>
             {showAddVaccine ? (language === "si" ? "අවලංගු කරන්න" : language === "ta" ? "ரத்து" : "Cancel") : (language === "si" ? "+ වාර්තාවක් එක් කරන්න" : language === "ta" ? "+ பதிவு சேர்" : "+ Add Record")}
           </button>
@@ -545,7 +548,7 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
         {showAddVaccine && (
           <div className="mb-4 rounded-2xl border border-primary/30 bg-info-light p-4 dark:bg-primary/10">
             <Label className="text-sm">{language === "si" ? "එන්නතේ නම" : language === "ta" ? "தடுப்பூசி பெயர்" : "Vaccine name"}</Label>
-            <input className={`mt-1 ${selectClass}`} value={newVaccine.vaccineName} onChange={(e) => setNewVaccine((v) => ({ ...v, vaccineName: e.target.value }))} placeholder="e.g. Rabies Vaccine" list="vaccine-name-options" />
+            <input className={`mt-1 ${selectClass}`} value={newVaccine.vaccineName} onChange={(e) => setNewVaccine((v) => ({ ...v, vaccineName: e.target.value }))} placeholder={tr("egRabiesVaccine")} list="vaccine-name-options" />
             <datalist id="vaccine-name-options">
               {["Rabies Vaccine", "DHPP Vaccine", "Leptospirosis Vaccine", "Bordetella Vaccine", "FVRCP Vaccine", "FeLV Vaccine", "Deworming Treatment", "Flea & Tick Prevention"].map((name) => <option key={name} value={name} />)}
             </datalist>
@@ -655,7 +658,7 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
       </section>
 
       <div className="space-y-3 pb-4">
-        <Button size="xl" className="w-full" onClick={() => navigate(`/pets/symptoms/${pet.id}`)}>Analyze Symptoms</Button>
+        <Button size="xl" className="w-full" onClick={() => navigate(`/pets/symptoms/${pet.id}`)}>{tr("analyzeSymptomsAction")}</Button>
       </div>
     </>
   );
@@ -665,8 +668,8 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
       <div className="w-full space-y-6 animate-in">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-[15px] font-semibold text-accent">Pet Details</h2>
-            <p className="mt-0.5 text-sm text-accent-subtle dark:text-accent-faint">View pet profile and health records</p>
+            <h2 className="text-[15px] font-semibold text-accent">{tr("petDetailsTitle")}</h2>
+            <p className="mt-0.5 text-sm text-accent-subtle dark:text-accent-faint">{tr("petDetailsSubtitle")}</p>
           </div>
           <Button size="sm" variant="secondary" onClick={() => (onBack ? onBack() : navigate("/pets"))}>Back</Button>
         </div>
@@ -675,7 +678,7 @@ export function PetProfilePage({ embedded = false, petIdOverride, onBack }: PetP
     );
   }
 
-  return <PageShell title="Pet Profile" rightAction={<button className="text-lg font-semibold text-primary">Edit</button>}>{content}</PageShell>;
+  return <PageShell title={tr("petProfileTitle")} rightAction={<button className="text-lg font-semibold text-primary">Edit</button>}>{content}</PageShell>;
 }
 
 type ClinicDetailsPageProps = {
@@ -905,6 +908,7 @@ export function SymptomReportPage() {
   const { petId } = useParams();
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
   const pets = useFlowPets();
   const pet = pets.find((p) => p.id === petId) ?? pets[0];
 
@@ -1184,7 +1188,7 @@ export function SymptomReportPage() {
             <span>{language === "si" ? "රෝග ලක්ෂණ රූපයක් තෝරන්න" : language === "ta" ? "அறிகுறி படத்தைத் தேர்ந்தெடுக்கவும்" : "Choose a symptom image"}</span>
             <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e.target.files?.[0] ?? null)} />
           </label>
-          {imageDataUrl && <img src={imageDataUrl} alt="Symptom upload" className="mt-3 h-40 w-full rounded-xl object-cover" />}
+          {imageDataUrl && <img src={imageDataUrl} alt={tr("symptomUploadAlt")} className="mt-3 h-40 w-full rounded-xl object-cover" />}
         </div>
 
         <Label className="mt-4 block text-sm">{language === "si" ? "අමතර විස්තර" : language === "ta" ? "கூடுதல் விவரங்கள்" : "Additional Details"}</Label>
@@ -1233,6 +1237,7 @@ export function PredictionResultPage() {
   const historyId = searchParams.get("prediction");
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
   const localData = safeRead<ResultData | null>(LAST_SYMPTOM_KEY, null);
   // When opened from a saved assessment (?prediction=<id>), load THAT specific
   // prediction instead of the last-submitted one cached in localStorage.
@@ -1852,7 +1857,7 @@ export function PredictionResultPage() {
       {data?.imageDataUrl ? (
         <section className={cardClassP5}>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-accent">{language === "si" ? "උඩුගත කළ රෝග ලක්ෂණ රූපය" : language === "ta" ? "பதிவேற்றப்பட்ட அறிகுறி படம்" : "Uploaded Symptom Image"}</h3>
-          <img src={data.imageDataUrl} alt="Uploaded symptom" className="mt-3 h-48 w-full rounded-xl object-cover" />
+          <img src={data.imageDataUrl} alt={tr("symptomUploadAlt")} className="mt-3 h-48 w-full rounded-xl object-cover" />
         </section>
       ) : null}
 

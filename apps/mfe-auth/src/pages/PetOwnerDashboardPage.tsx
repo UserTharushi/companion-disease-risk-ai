@@ -1090,19 +1090,19 @@ export function PetOwnerDashboardPage() {
                         ))}
                       </select>
                     </div>
-                    <div className="space-y-1.5"><Label className="text-[12px]">Age (years)</Label><Input value={newPet.age} onChange={(e) => setNewPet((p) => ({ ...p, age: e.target.value }))} placeholder="e.g. 3" /></div>
-                    <div className="space-y-1.5"><Label className="text-[12px]">Weight (kg)</Label><Input value={newPet.weightKg} onChange={(e) => setNewPet((p) => ({ ...p, weightKg: e.target.value }))} placeholder="e.g. 12" /></div>
+                    <div className="space-y-1.5"><Label className="text-[12px]">{tr("ageYearsLabel")}</Label><Input value={newPet.age} onChange={(e) => setNewPet((p) => ({ ...p, age: e.target.value }))} placeholder="e.g. 3" /></div>
+                    <div className="space-y-1.5"><Label className="text-[12px]">{tr("weightKgLabel")}</Label><Input value={newPet.weightKg} onChange={(e) => setNewPet((p) => ({ ...p, weightKg: e.target.value }))} placeholder="e.g. 12" /></div>
                   </div>
 
                   <div className="mt-4 rounded-lg border border-border/80 bg-surface-secondary p-4 dark:border-neutral-800 dark:bg-neutral-950">
                     <h3 className="text-[13px] font-semibold text-accent">{tr("vaccinationDetails")}</h3>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-1.5"><Label className="text-[12px]">{tr("vaccineName")}</Label><Input value={newPet.vaccinationName} onChange={(e) => setNewPet((p) => ({ ...p, vaccinationName: e.target.value }))} placeholder="e.g. Rabies" /></div>
+                      <div className="space-y-1.5"><Label className="text-[12px]">{tr("vaccineName")}</Label><Input value={newPet.vaccinationName} onChange={(e) => setNewPet((p) => ({ ...p, vaccinationName: e.target.value }))} placeholder={tr("egRabies")} /></div>
                       <div className="space-y-1.5"><Label className="text-[12px]">{tr("lastVaccinationDate")}</Label><Input type="date" value={newPet.vaccinationDate} onChange={(e) => setNewPet((p) => ({ ...p, vaccinationDate: e.target.value }))} /></div>
                       <div className="space-y-1.5"><Label className="text-[12px]">{tr("frequency")}</Label>
                         <select value={newPet.vaccinationFrequency} onChange={(e) => setNewPet((p) => ({ ...p, vaccinationFrequency: e.target.value }))} className="flex h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm shadow-xs focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-950/5 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"><option>{tr("annual")}</option><option>{tr("everySixMonths")}</option><option>{tr("custom")}</option></select>
                       </div>
-                      <div className="space-y-1.5"><Label className="text-[12px]">Next due date (optional)</Label><Input type="date" value={newPet.nextVaccinationDate} onChange={(e) => setNewPet((p) => ({ ...p, nextVaccinationDate: e.target.value }))} /></div>
+                      <div className="space-y-1.5"><Label className="text-[12px]">{tr("nextDueDateOptional")}</Label><Input type="date" value={newPet.nextVaccinationDate} onChange={(e) => setNewPet((p) => ({ ...p, nextVaccinationDate: e.target.value }))} /></div>
                     </div>
                   </div>
 
@@ -1212,7 +1212,7 @@ export function PetOwnerDashboardPage() {
                           <button
                             onClick={() => dismissAnnouncement(a.id)}
                             className="shrink-0 rounded-md p-1 text-accent-faint transition hover:bg-white/60 hover:text-accent"
-                            aria-label="Dismiss"
+                            aria-label={tr("dismissLabel")}
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>

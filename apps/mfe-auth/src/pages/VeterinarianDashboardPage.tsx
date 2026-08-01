@@ -665,7 +665,7 @@ export function VeterinarianDashboardPage() {
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-surface-tertiary dark:hover:bg-primary"
           >
             <Avatar className="h-7 w-7">
-              {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt="Vet profile" /> : null}
+              {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt={tr("vetProfileAlt")} /> : null}
               <AvatarFallback className="text-[11px]">{vetInitial}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
@@ -702,7 +702,7 @@ export function VeterinarianDashboardPage() {
             <ThemeSwitcher compact />
             <Badge variant="outline" className="hidden gap-1 sm:inline-flex"><Sparkles className="h-3 w-3" />{tr("aiActive")}</Badge>
             <Avatar className="h-7 w-7 cursor-pointer" onClick={() => handleSelectSection("profile")}>
-              {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt="Vet profile" /> : null}
+              {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt={tr("vetProfileAlt")} /> : null}
               <AvatarFallback className="text-[11px]">{vetInitial}</AvatarFallback>
             </Avatar>
           </div>
@@ -1051,7 +1051,7 @@ export function VeterinarianDashboardPage() {
                 <div className={cn(card, "max-w-2xl")}>
                   <div className="flex items-center gap-4">
                     <Avatar className="h-16 w-16">
-                      {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt="Vet profile" /> : null}
+                      {vetProfile.photoDataUrl ? <AvatarImage src={vetProfile.photoDataUrl} alt={tr("vetProfileAlt")} /> : null}
                       <AvatarFallback className="text-xl">{vetInitial}</AvatarFallback>
                     </Avatar>
                     <div>

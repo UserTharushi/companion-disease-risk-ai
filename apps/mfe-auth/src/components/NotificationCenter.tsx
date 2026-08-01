@@ -6,7 +6,7 @@ import {
   markNotificationRead,
   type AppNotification,
 } from "../lib/notification-api";
-import { useLanguageStore } from "../lib/language";
+import { t, useLanguageStore } from "../lib/language";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -29,6 +29,7 @@ function relativeTime(iso: string): string {
 
 export function NotificationCenter() {
   const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -79,7 +80,7 @@ export function NotificationCenter() {
       <button
         onClick={() => setOpen((value) => !value)}
         className="relative flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-accent transition hover:border-primary dark:border-neutral-700 dark:bg-neutral-900"
-        aria-label="Notifications"
+        aria-label={tr("notificationsLabel")}
       >
         <Bell className="h-4 w-4" />
         {unreadCount > 0 && (

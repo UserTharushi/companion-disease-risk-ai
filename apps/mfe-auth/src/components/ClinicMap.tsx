@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
 import type { LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { t, useLanguageStore } from "../lib/language";
 
 export type MapClinic = {
   id: string;
@@ -38,6 +39,8 @@ export function ClinicMap({
   userLocation: { latitude: number; longitude: number } | null;
   clinics: MapClinic[];
 }) {
+  const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
   const points: [number, number][] = [];
   if (userLocation) points.push([userLocation.latitude, userLocation.longitude]);
   clinics.forEach((c) => points.push([c.latitude, c.longitude]));
@@ -60,7 +63,7 @@ export function ClinicMap({
             radius={8}
             pathOptions={{ color: "#1d4ed8", fillColor: "#3b82f6", fillOpacity: 0.9, weight: 2 }}
           >
-            <Popup>You are here</Popup>
+            <Popup>{tr("youAreHere")}</Popup>
           </CircleMarker>
         )}
 
@@ -79,14 +82,14 @@ export function ClinicMap({
             <Popup>
               <div style={{ minWidth: 140 }}>
                 <strong>{c.name}</strong>
-                {typeof c.distanceKm === "number" && <div>{c.distanceKm.toFixed(1)} km away</div>}
-                {c.external && <div style={{ color: "#b45309" }}>OpenStreetMap listing</div>}
+                {typeof c.distanceKm === "number" && <div>{c.distanceKm.toFixed(1)} {tr("kmAway")}</div>}
+                {c.external && <div style={{ color: "#b45309" }}>{tr("osmListing")}</div>}
                 <a
                   href={`https://www.google.com/maps/dir/?api=1&destination=${c.latitude},${c.longitude}`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Directions
+                  {tr("directions")}
                 </a>
               </div>
             </Popup>

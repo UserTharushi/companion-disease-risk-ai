@@ -7,6 +7,7 @@ import {
   type InquiryDocument,
   type InquiryMessage,
 } from "../models/clinic.models";
+import { notifyCopy, recipientLanguage } from "../services/notify-i18n";
 
 export const inquiryRouter = Router();
 
@@ -52,6 +53,21 @@ async function notify(params: {
   } catch (err) {
     console.warn("[clinic-service] inquiry notification failed", err);
   }
+}
+
+/** Resolve copy in the recipient's own language before sending. */
+async function notifyLocalized(params: {
+  userId: string;
+  type: "inquiry_replied" | "inquiry_message";
+  copyKey: string;
+  petName?: string;
+  dedupeKey: string;
+}) {
+  if (!params.userId) return;
+  const language = await recipientLanguage(params.userId);
+  const pet = (params.petName ?? "").trim();
+  const { title, body } = notifyCopy(pet ? params.copyKey : `${params.copyKey}_generic`, language, pet);
+  await notify({ userId: params.userId, type: params.type, title, body, dedupeKey: params.dedupeKey });
 }
 
 function mapInquiry(inquiry: any) {
@@ -139,24 +155,20 @@ async function notifyCounterparty(inquiry: InquiryDocument, senderRole: "owner" 
     const surgeon = await SurgeonModel.findById(inquiry.surgeonId).lean().catch(() => null);
     const vetUserId = (surgeon as { userId?: string } | null)?.userId;
     if (!vetUserId) return;
-    await notify({
+    await notifyLocalized({
       userId: vetUserId,
       type: "inquiry_message",
-      title: "New message about a patient",
-      body: inquiry.petName
-        ? `An owner sent a message about ${inquiry.petName}.`
-        : "An owner sent a message about their pet.",
+      copyKey: "inquiry_message",
+      petName: inquiry.petName,
       dedupeKey: `inquiry_msg:${String(inquiry._id)}:${index}`,
     });
     return;
   }
-  await notify({
+  await notifyLocalized({
     userId: inquiry.ownerId,
     type: "inquiry_replied",
-    title: "A veterinarian replied to your question",
-    body: inquiry.petName
-      ? `Your question about ${inquiry.petName} has been answered. Open Inquiries to read the reply.`
-      : "Your question has been answered. Open Inquiries to read the reply.",
+    copyKey: "inquiry_replied",
+    petName: inquiry.petName,
     dedupeKey: `inquiry_msg:${String(inquiry._id)}:${index}`,
   });
 }

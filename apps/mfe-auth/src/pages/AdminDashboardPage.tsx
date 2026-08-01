@@ -876,7 +876,7 @@ export function AdminDashboardPage() {
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-surface-tertiary dark:hover:bg-primary"
           >
             <Avatar className="h-7 w-7">
-              {adminProfile.photoDataUrl ? <AvatarImage src={adminProfile.photoDataUrl} alt="Admin profile" /> : null}
+              {adminProfile.photoDataUrl ? <AvatarImage src={adminProfile.photoDataUrl} alt={tr("adminProfileAlt")} /> : null}
               <AvatarFallback className="text-[11px]">{adminInitial}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
@@ -916,7 +916,7 @@ export function AdminDashboardPage() {
               <Sparkles className="h-3 w-3" />{aiOnline ? tr("online") : tr("degradedStatus")}
             </Badge>
             <Avatar className="h-7 w-7 cursor-pointer" onClick={() => handleSelectSection("profile")}>
-              {adminProfile.photoDataUrl ? <AvatarImage src={adminProfile.photoDataUrl} alt="Admin profile" /> : null}
+              {adminProfile.photoDataUrl ? <AvatarImage src={adminProfile.photoDataUrl} alt={tr("adminProfileAlt")} /> : null}
               <AvatarFallback className="text-[11px]">{adminInitial}</AvatarFallback>
             </Avatar>
           </div>
@@ -1202,7 +1202,7 @@ export function AdminDashboardPage() {
                       <div><Label className="text-[11px]">{tr("address")} *</Label><input className={cn(inputClass, "mt-1")} value={clinicDraft.address} onChange={(e) => setClinicDraft((d) => ({ ...d, address: e.target.value }))} /></div>
                       <div><Label className="text-[11px]">{tr("phone")}</Label><input className={cn(inputClass, "mt-1")} value={clinicDraft.phone} onChange={(e) => setClinicDraft((d) => ({ ...d, phone: e.target.value }))} /></div>
                       <div><Label className="text-[11px]">{tr("email")}</Label><input className={cn(inputClass, "mt-1")} value={clinicDraft.email} onChange={(e) => setClinicDraft((d) => ({ ...d, email: e.target.value }))} /></div>
-                      <div><Label className="text-[11px]">{tr("specialization")}</Label><input className={cn(inputClass, "mt-1")} placeholder="General, Dermatology, ..." value={clinicDraft.specializations} onChange={(e) => setClinicDraft((d) => ({ ...d, specializations: e.target.value }))} /></div>
+                      <div><Label className="text-[11px]">{tr("specialization")}</Label><input className={cn(inputClass, "mt-1")} placeholder={tr("specializationPlaceholder")} value={clinicDraft.specializations} onChange={(e) => setClinicDraft((d) => ({ ...d, specializations: e.target.value }))} /></div>
                       <div className="grid grid-cols-2 gap-2">
                         {/* Placeholders are marked as examples: they previously
                             showed bare Colombo coordinates, which were copied in
@@ -1580,7 +1580,7 @@ export function AdminDashboardPage() {
                 <div className={cn(card, "max-w-2xl")}>
                   <div className="flex items-center gap-4">
                     <Avatar className="h-16 w-16">
-                      {adminProfile.photoDataUrl ? <AvatarImage src={adminProfile.photoDataUrl} alt="Admin profile" /> : null}
+                      {adminProfile.photoDataUrl ? <AvatarImage src={adminProfile.photoDataUrl} alt={tr("adminProfileAlt")} /> : null}
                       <AvatarFallback className="text-xl">{adminInitial}</AvatarFallback>
                     </Avatar>
                     <div>

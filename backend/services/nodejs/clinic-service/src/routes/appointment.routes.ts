@@ -1,5 +1,6 @@
 import { Router, type Request } from "express";
 import { AppointmentModel, PetAccessGrantModel, SurgeonModel, TimeSlotModel, grantAccessForAppointment } from "../models/clinic.models";
+import { notifyCopy, recipientLanguage } from "../services/notify-i18n";
 
 const SERVICE_KEY = process.env.SERVICE_KEY || "internal-dev-key";
 
@@ -76,19 +77,21 @@ async function notifyOwner(params: {
   ownerId: string;
   appointmentId: string;
   type: "appointment_cancelled" | "appointment_rescheduled";
-  title: string;
-  body: string;
 }) {
   if (!params.ownerId) return;
   try {
+    // Written in the owner's own language — an English notice about a cancelled
+    // appointment is of little use to someone using the app in Sinhala.
+    const language = await recipientLanguage(params.ownerId);
+    const { title, body } = notifyCopy(params.type, language);
     await fetch(`${NOTIFICATION_SERVICE_URL}/api/notifications`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         userId: params.ownerId,
         type: params.type,
-        title: params.title,
-        body: params.body,
+        title,
+        body,
         urgency: "high",
         // One notice per appointment per transition, so a retry cannot spam.
         dedupeKey: `${params.type}:${params.appointmentId}`,
@@ -317,16 +320,12 @@ appointmentRouter.patch("/:appointmentId", async (req, res, next) => {
         ownerId: appointment.ownerId,
         appointmentId: String(appointment._id),
         type: "appointment_cancelled",
-        title: "Appointment cancelled",
-        body: "Your veterinary appointment has been cancelled by the clinic. Please book another time slot.",
       });
     } else if (changedByStaff && slotChanged) {
       await notifyOwner({
         ownerId: appointment.ownerId,
         appointmentId: String(appointment._id),
         type: "appointment_rescheduled",
-        title: "Appointment rescheduled",
-        body: "Your veterinary appointment has been moved by the clinic. Please check the new time in your appointments.",
       });
     }
 

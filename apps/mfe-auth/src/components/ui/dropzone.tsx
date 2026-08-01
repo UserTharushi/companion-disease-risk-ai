@@ -2,6 +2,7 @@ import { type DragEvent, type ChangeEvent, useRef, useState, useCallback } from 
 import Cropper, { type Area } from "react-easy-crop";
 import { Upload, X, Image as ImageIcon, Pencil } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { t, useLanguageStore } from "../../lib/language";
 import {
   Dialog,
   DialogContent,
@@ -80,14 +81,20 @@ export function Dropzone({
   onChange,
   onClear,
   className,
-  label = "Drag & drop an image here, or click to browse",
-  hint = "Supports PNG, JPG, WEBP — max 5 MB",
+  // Defaults come from the dictionary below, not from a literal here, so a
+  // caller that passes nothing still gets copy in the reader's language.
+  label,
+  hint,
   accept = "image/*",
   compact = false,
   disabled = false,
   avatar = false,
   cropShape,
 }: DropzoneProps) {
+  const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
+  const resolvedLabel = label ?? tr("dzLabel");
+  const resolvedHint = hint ?? tr("dzHint");
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [cropSource, setCropSource] = useState<string | null>(null);
@@ -184,7 +191,7 @@ export function Dropzone({
       <div className={cn("relative group", compact ? "inline-flex flex-col items-center gap-1" : "w-full", className)}>
         <div className={cn("relative", previewContainerClass)}>
           <div className={cn("overflow-hidden", previewFrameClass)}>
-            <img src={value} alt="Upload preview" className="relative z-0 h-full w-full object-cover" />
+            <img src={value} alt={tr("uploadPreview")} className="relative z-0 h-full w-full object-cover" />
           </div>
           {!disabled && (
             <button
@@ -195,7 +202,7 @@ export function Dropzone({
                 "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
               )}
             >
-              <span className="inline-flex items-center gap-1"><Pencil className="h-3 w-3" />Crop</span>
+              <span className="inline-flex items-center gap-1"><Pencil className="h-3 w-3" />{tr("cropAction")}</span>
             </button>
           )}
           {onClear && (
@@ -208,14 +215,14 @@ export function Dropzone({
                 "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400",
                 avatar ? "right-2 top-2 h-7 w-7" : compact ? "right-1 top-1 h-6 w-6" : "right-3 top-3 h-8 w-8",
               )}
-              aria-label="Remove image"
+              aria-label={tr("removeImage")}
             >
               <X className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
             </button>
           )}
         </div>
         <p className={cn("text-center text-accent-faint", compact || avatar ? "text-[10px]" : "mt-2 text-xs text-accent-subtle")}>
-          {avatar ? "Click Crop to adjust the visible face area" : compact ? "Drop to replace" : "Drop a new image to replace, or hover to remove"}
+          {avatar ? tr("dzAvatarHint") : compact ? tr("dzDropReplace") : tr("dzDropReplaceLong")}
         </p>
       </div>
     );
@@ -249,7 +256,7 @@ export function Dropzone({
         {isDragging ? (
           <>
             <Upload className={cn("text-accent", compact ? "h-4 w-4" : "h-8 w-8")} />
-            {!compact && <p className="text-sm font-semibold text-accent">Drop to upload</p>}
+            {!compact && <p className="text-sm font-semibold text-accent">{tr("dropToUpload")}</p>}
           </>
         ) : compact ? (
           <ImageIcon className="h-5 w-5 text-accent-faint" />
@@ -258,15 +265,15 @@ export function Dropzone({
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-surface-tertiary ring-1 ring-neutral-200/80 sm:h-16 sm:w-16">
               <Upload className="h-7 w-7 text-accent-subtle sm:h-8 sm:w-8" />
             </div>
-            <p className="max-w-md text-center text-sm font-medium text-neutral-800">{label}</p>
-            <p className="text-center text-xs text-accent-subtle">{hint}</p>
+            <p className="max-w-md text-center text-sm font-medium text-neutral-800">{resolvedLabel}</p>
+            <p className="text-center text-xs text-accent-subtle">{resolvedHint}</p>
           </>
         )}
       </button>
       {compact || avatar ? (
-        <p className="text-center text-[9px] text-accent-faint max-w-[80px]">Drag & drop or click</p>
+        <p className="text-center text-[9px] text-accent-faint max-w-[80px]">{tr("dragDropOrClick")}</p>
       ) : (
-        <p className="mt-2 text-center text-xs text-accent-faint">or click anywhere in this area to browse files</p>
+        <p className="mt-2 text-center text-xs text-accent-faint">{tr("dzClickBrowse")}</p>
       )}
       <input
         ref={inputRef}
@@ -280,9 +287,9 @@ export function Dropzone({
       <Dialog open={cropOpen} onOpenChange={(open) => { if (!open) closeCropper(); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Crop photo</DialogTitle>
+            <DialogTitle>{tr("cropPhoto")}</DialogTitle>
             <DialogDescription>
-              Drag the image to select the exact area. Use zoom for better face framing.
+              {tr("cropPhotoDesc")}
             </DialogDescription>
           </DialogHeader>
 
@@ -304,7 +311,7 @@ export function Dropzone({
 
           <div className="mt-4 space-y-2">
             <label className="block text-xs text-accent-subtle">
-              Zoom
+              {tr("zoomLabel")}
               <input
                 type="range"
                 min={1}
@@ -319,10 +326,10 @@ export function Dropzone({
 
           <div className="mt-4 flex justify-end gap-2">
             <button type="button" onClick={closeCropper} className="rounded-md border border-border px-3 py-1.5 text-sm text-accent">
-              Cancel
+              {tr("cancel")}
             </button>
             <button type="button" disabled={!croppedAreaPixels || cropApplying} onClick={applyCrop} className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg disabled:opacity-60">
-              {cropApplying ? "Applying..." : "Apply crop"}
+              {cropApplying ? tr("applyingAction") : tr("applyCrop")}
             </button>
           </div>
         </DialogContent>
