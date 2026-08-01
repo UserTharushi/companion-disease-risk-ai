@@ -137,7 +137,11 @@ export type StoredPrediction = PredictionResult & {
 };
 
 export async function getPrediction(id: string): Promise<StoredPrediction> {
-  const response = await fetch(`${API_BASE_URL}/api/predictions/${encodeURIComponent(id)}`, {
+  // Without the language the service returns the names stored when the
+  // assessment was created, so reopening a Tamil assessment while the app is
+  // in Sinhala showed Tamil conditions under a Sinhala interface.
+  const params = new URLSearchParams({ language: getAppLanguage() });
+  const response = await fetch(`${API_BASE_URL}/api/predictions/${encodeURIComponent(id)}?${params}`, {
     headers: authHeaders(),
   });
   if (!response.ok) {

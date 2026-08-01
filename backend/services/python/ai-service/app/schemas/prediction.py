@@ -6,6 +6,26 @@ DISCLAIMER_TEXT = (
     "Always consult a licensed veterinarian for professional advice."
 )
 
+# NFR1 requires this notice on every result. It was previously English-only in
+# all three languages, which made the one string that most needs to be
+# understood the least readable one on the page.
+DISCLAIMER_I18N: dict[str, str] = {
+    "en": DISCLAIMER_TEXT,
+    "si": (
+        "මෙය තීරණ ගැනීමට සහාය වන මෙවලමකි, වෛද්‍ය රෝග විනිශ්චයක් නොවේ. "
+        "වෘත්තීය උපදෙස් සඳහා සැමවිටම බලපත්‍රලාභී පශු වෛද්‍යවරයෙකුගෙන් විමසන්න."
+    ),
+    "ta": (
+        "இது முடிவெடுக்க உதவும் கருவி, மருத்துவ நோயறிதல் அல்ல. "
+        "தொழில்முறை ஆலோசனைக்கு எப்போதும் உரிமம் பெற்ற கால்நடை மருத்துவரை அணுகவும்."
+    ),
+}
+
+
+def disclaimer_for(language: str | None) -> str:
+    """The disclaimer in the caller's language, falling back to English."""
+    return DISCLAIMER_I18N.get((language or "en").lower(), DISCLAIMER_TEXT)
+
 
 class FeedbackRequest(BaseModel):
     rating: str  # "helpful" | "not_helpful"

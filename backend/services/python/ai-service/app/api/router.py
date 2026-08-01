@@ -7,6 +7,7 @@ from app.schemas.prediction import (
     FeedbackRequest,
     PredictionResponse,
     SymptomPayload,
+    disclaimer_for,
 )
 from app.services import access, model_store, names_i18n, ontology, prediction_repo, predictor
 
@@ -18,6 +19,27 @@ def _caller(x_user_id: Optional[str], x_user_role: Optional[str]) -> tuple[str, 
     return (x_user_id or "", (x_user_role or "").lower())
 
 
+def _relocalize(doc: dict, language: str) -> dict:
+    """Re-render a stored prediction's display names in the reader's language.
+
+    Localised names are written into the document when the assessment is
+    created, so a saved assessment used to come back in whatever language it
+    was made in — switch the app to Sinhala, reopen an assessment made in
+    Tamil, and the conditions were still Tamil. The canonical English names are
+    stored alongside, so the display names can simply be rebuilt on read.
+
+    Free text generated at creation time (agent explanations) cannot be
+    rebuilt without re-running the model, so it is deliberately left alone.
+    """
+    for disease in doc.get("predicted_diseases") or []:
+        disease["disease_localized"] = names_i18n.localize_disease(disease.get("disease", ""), language)
+    for link in doc.get("ontology_links") or []:
+        link["symptom_localized"] = names_i18n.localize_symptom(link.get("symptom", ""), language)
+        link["disease_localized"] = names_i18n.localize_disease(link.get("disease", ""), language)
+    doc["disclaimer"] = disclaimer_for(language)
+    return doc
+
+
 @router.get("/health")
 def health():
     return {"status": "ok", "service": "ai-service"}
@@ -26,6 +48,9 @@ def health():
 @router.post("/predict", response_model=PredictionResponse)
 def predict(payload: SymptomPayload):
     response = predictor.predict(payload)
+    # The disclaimer defaults to English on the schema; NFR1 wants it readable,
+    # so render it in the language the assessment was requested in.
+    response.disclaimer = disclaimer_for(payload.language)
     prediction_id = prediction_repo.save(payload.model_dump(), response.model_dump())
     response.id = prediction_id
     return response
@@ -52,9 +77,9 @@ def prediction_history(
     elif role == "owner":
         items = [item for item in items if str(item.get("owner_id")) == uid]
 
+    # Symptom links were previously left in the creation language here.
     for item in items:
-        for disease in item.get("predicted_diseases", []):
-            disease["disease_localized"] = names_i18n.localize_disease(disease.get("disease", ""), language)
+        _relocalize(item, language)
     return {"success": True, "data": items}
 
 
@@ -68,6 +93,7 @@ def prediction_feedback_summary():
 @router.get("/predictions/{prediction_id}")
 def prediction_detail(
     prediction_id: str,
+    language: str = Query(default="en"),
     x_user_id: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),
 ):
@@ -81,7 +107,7 @@ def prediction_detail(
         raise HTTPException(status_code=403, detail="No active access grant for this pet")
     if role == "owner" and str(doc.get("owner_id")) != uid:
         raise HTTPException(status_code=403, detail="You can only view your own assessments")
-    return {"success": True, "data": doc}
+    return {"success": True, "data": _relocalize(doc, language)}
 
 
 @router.post("/predictions/{prediction_id}/feedback")
