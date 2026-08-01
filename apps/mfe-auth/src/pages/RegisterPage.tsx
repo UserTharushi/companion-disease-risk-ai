@@ -8,6 +8,7 @@ import { registerUser } from "../lib/auth-api";
 import { toast } from "../lib/use-toast";
 import { getAccessToken, getSelectedRole, saveUserCredentials, saveProfileName } from "../lib/session";
 import { AuthLayout } from "../components/AuthLayout";
+import { AuthBackLink } from "../components/BackButton";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -87,6 +88,7 @@ export function RegisterPage() {
   return (
     <AuthLayout>
       <div className="animate-slide-up">
+        <AuthBackLink />
         <h1 className="text-xl font-semibold tracking-tight text-accent">{tr("createAccount")}</h1>
         <p className="mt-1 text-sm text-accent-subtle">
           {tr("alreadyHaveAccount")}{" "}

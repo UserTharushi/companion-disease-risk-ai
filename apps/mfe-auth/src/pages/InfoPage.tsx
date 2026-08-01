@@ -2,6 +2,7 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { hasStartedSession, markInfoSeen } from "../lib/session";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { AuthLayout } from "../components/AuthLayout";
+import { AuthBackLink } from "../components/BackButton";
 import { Button } from "../components/ui/button";
 import { Alert } from "../components/ui/alert";
 import { Progress } from "../components/ui/progress";
@@ -16,6 +17,7 @@ export function InfoPage() {
   return (
     <AuthLayout>
       <div className="animate-slide-up">
+        <AuthBackLink />
         <div className="mb-6 space-y-2">
           <div className="flex items-center justify-between text-xs text-accent-faint">
             <span>{tr("infoStepLabel")}</span>

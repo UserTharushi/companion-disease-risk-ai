@@ -7,6 +7,7 @@ import { Button } from "../components/ui/button";
 import { Progress } from "../components/ui/progress";
 import { cn } from "../lib/utils";
 import { t, useLanguageStore } from "../lib/language";
+import { useHistoryBack } from "../lib/use-history-back";
 import onboardingAiImage from "../assets/images/onboarding-ai.jpg";
 import onboardingVetImage from "../assets/images/auth-vet-consult.jpg";
 import onboardingVaccineImage from "../assets/images/onboarding-vaccine.jpg";
@@ -23,6 +24,7 @@ export function OnboardingPage() {
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
   const tr = (key: string) => t(language, key);
+  const { canGoBack, goBack } = useHistoryBack();
   const [step, setStep] = useState(0);
   if (!hasStartedSession()) return <Navigate to="/auth" replace />;
   if (!hasSeenInfoStep()) return <Navigate to="/auth/info" replace />;
@@ -89,8 +91,16 @@ export function OnboardingPage() {
 
         {/* Navigation */}
         <div className="mt-8 flex gap-2">
-          {step > 0 && (
-            <Button variant="secondary" size="lg" onClick={() => setStep((s) => s - 1)} className="w-10 px-0">
+          {/* On the first slide there is no previous slide, so back leaves the
+              carousel entirely and returns to the info step. */}
+          {(step > 0 || canGoBack) && (
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => (step > 0 ? setStep((s) => s - 1) : goBack())}
+              aria-label={tr("goBack")}
+              className="w-10 px-0"
+            >
               <ArrowLeft className="h-4 w-4" />
             </Button>
           )}

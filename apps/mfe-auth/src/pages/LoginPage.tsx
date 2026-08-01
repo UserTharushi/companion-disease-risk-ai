@@ -11,6 +11,7 @@ import {
   saveSelectedRole, syncServerRole, normalizeUserRole,
 } from "../lib/session";
 import { AuthLayout } from "../components/AuthLayout";
+import { AuthBackLink } from "../components/BackButton";
 import { redirectToPets } from "../lib/post-auth-redirect";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -91,6 +92,7 @@ export function LoginPage() {
   return (
     <AuthLayout>
       <div className="animate-slide-up">
+        <AuthBackLink />
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-accent">{tr("signIn")}</h1>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useHistoryBack } from "./use-history-back";
 
 /**
  * Keeps a dashboard's active section in the URL as `?tab=<id>`.
@@ -53,17 +54,12 @@ export function useTabRoute<T extends string>(params: {
     [activeTab, onBasePath, navigate, basePath, defaultTab]
   );
 
+  // Popping is shared with the auth pages so both use one definition of "back";
+  // the dashboard root is the fallback when there is no history to pop.
+  const { goBack } = useHistoryBack(basePath);
+
   /** True when there is somewhere sensible to go back to. */
   const canGoBack = !onBasePath || activeTab !== defaultTab;
-
-  const goBack = useCallback(() => {
-    // A deep link or a cold PWA launch has nothing to pop; popping anyway would
-    // close the app, which is exactly the behaviour the back arrow exists to
-    // prevent. Fall back to the dashboard root instead.
-    const historyIndex = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-    if (historyIndex > 0) navigate(-1);
-    else navigate(basePath, { replace: true });
-  }, [navigate, basePath]);
 
   return { selectTab, canGoBack, goBack };
 }

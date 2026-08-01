@@ -3,6 +3,7 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { saveSelectedRole, hasStartedSession, hasCompletedOnboardingStep, markRoleStepDone } from "../lib/session";
 import { PawPrint, Stethoscope, Settings, Check, ArrowRight } from "lucide-react";
 import { AuthLayout } from "../components/AuthLayout";
+import { AuthBackLink } from "../components/BackButton";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { Button } from "../components/ui/button";
 import { Progress } from "../components/ui/progress";
@@ -46,8 +47,11 @@ export function RoleSelectionPage() {
   return (
     <AuthLayout>
       <div className="animate-slide-up">
-        <div className="mb-4 flex justify-end lg:hidden">
-          <LanguageSwitcher compact />
+        <div className="mb-4 flex items-center justify-between">
+          <AuthBackLink className="mb-0" />
+          <div className="ml-auto lg:hidden">
+            <LanguageSwitcher compact />
+          </div>
         </div>
         <div className="mb-6 space-y-2">
           <div className="flex items-center justify-between text-xs text-accent-faint">
@@ -101,7 +105,7 @@ export function RoleSelectionPage() {
         </div>
 
         <Button size="xl" className="mt-8 w-full" onClick={handleContinue}>
-          Continue
+          {t(language, "continueAction")}
           <ArrowRight className="h-4 w-4" />
         </Button>
 
