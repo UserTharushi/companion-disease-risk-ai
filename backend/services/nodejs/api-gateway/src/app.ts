@@ -9,9 +9,57 @@ import { authenticate, type AuthenticatedRequest } from "./middleware/auth";
 
 const app = express();
 
+// ── CORS ───────────────────────────────────────
+// ALLOWED_ORIGINS lists localhost ports only, which is right for a browser on
+// the development machine and wrong for anything else. Opening the app on a
+// phone serves it from the laptop's LAN address, so requests arrive with an
+// origin like http://192.168.1.11:3001, no allow header came back, and every
+// call failed in the browser ("Load failed" on iOS) even though the request
+// itself reached the gateway.
+//
+// A LAN address cannot be configured ahead of time - it changes with the
+// network - so private-network origins are accepted outside production, where
+// they are unreachable from the internet anyway. A deployed gateway keeps the
+// strict allowlist.
+const configuredOrigins = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const PRIVATE_ORIGIN =
+  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/i;
+
+const allowPrivateNetwork = process.env.NODE_ENV !== "production";
+
+function isAllowedOrigin(origin?: string): boolean {
+  // No Origin header at all: curl, server-to-server, health checks.
+  if (!origin) return true;
+  if (configuredOrigins.length === 0) return true;
+  if (configuredOrigins.includes(origin)) return true;
+  return allowPrivateNetwork && PRIVATE_ORIGIN.test(origin);
+}
+
 // ── Security Middleware ────────────────────────
 app.use(helmet());
-app.use(cors({ origin: process.env.ALLOWED_ORIGINS?.split(",") || "*", credentials: true }));
+// Refuse a disallowed origin here rather than leaving it to the cors package.
+// Told `false`, that package simply adds no header and calls next(), so the
+// request continues into the proxy and is answered by a service whose own
+// cors() allows everything - the allowlist would look enforced while handing
+// out Access-Control-Allow-Origin: *.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !isAllowedOrigin(origin)) {
+    return res.status(403).json({ success: false, message: "Origin not allowed" });
+  }
+  return next();
+});
+
+app.use(
+  cors({
+    origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
+    credentials: true,
+  }),
+);
 app.use(morgan("combined"));
 
 // ── Rate Limiting ─────────────────────────────
