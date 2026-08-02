@@ -92,7 +92,7 @@ export function LoginPage() {
   return (
     <AuthLayout>
       <div className="animate-slide-up">
-        <AuthBackLink />
+        <AuthBackLink fallback="/auth" />
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-accent">{tr("signIn")}</h1>

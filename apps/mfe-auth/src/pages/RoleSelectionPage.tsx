@@ -44,7 +44,7 @@ export function RoleSelectionPage() {
     <AuthLayout>
       <div className="animate-slide-up">
         <div className="mb-4 flex items-center justify-between">
-          <AuthBackLink className="mb-0" />
+          <AuthBackLink fallback="/auth/onboarding" className="mb-0" />
           <div className="ml-auto lg:hidden">
             <LanguageSwitcher compact />
           </div>

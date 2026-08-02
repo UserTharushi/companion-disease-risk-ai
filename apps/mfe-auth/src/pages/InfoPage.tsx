@@ -17,7 +17,7 @@ export function InfoPage() {
   return (
     <AuthLayout>
       <div className="animate-slide-up">
-        <AuthBackLink />
+        <AuthBackLink fallback="/auth" />
         <div className="mb-6 space-y-2">
           <div className="flex items-center justify-between text-xs text-accent-faint">
             <span>{tr("infoStepLabel")}</span>

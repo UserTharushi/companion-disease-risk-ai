@@ -24,7 +24,9 @@ export function OnboardingPage() {
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
   const tr = (key: string) => t(language, key);
-  const { canGoBack, goBack } = useHistoryBack();
+  // Falls back to the info step when there is no history to pop (refresh,
+  // cold launch), so the arrow never silently disappears.
+  const { canGoBack, goBack } = useHistoryBack("/auth/info");
   const [step, setStep] = useState(0);
   if (!hasStartedSession()) return <Navigate to="/auth" replace />;
   if (!hasSeenInfoStep()) return <Navigate to="/auth/info" replace />;

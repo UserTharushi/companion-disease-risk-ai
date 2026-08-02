@@ -88,7 +88,7 @@ export function RegisterPage() {
   return (
     <AuthLayout>
       <div className="animate-slide-up">
-        <AuthBackLink />
+        <AuthBackLink fallback="/auth/role" />
         <h1 className="text-xl font-semibold tracking-tight text-accent">{tr("createAccount")}</h1>
         <p className="mt-1 text-sm text-accent-subtle">
           {tr("alreadyHaveAccount")}{" "}

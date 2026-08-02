@@ -29,13 +29,18 @@ export function BackButton({ onClick, label }: { onClick: () => void; label: str
  * Back link for the auth flow, matching the arrow-plus-label style the password
  * pages already use.
  *
- * Renders nothing when there is no history to pop — arriving at sign-in from a
- * logout redirect or a cold launch leaves nowhere to go, and a control that
- * sometimes does nothing teaches people to stop trusting it.
+ * `fallback` is the page this one logically sits under. When there is history
+ * to pop it goes back to wherever the user actually came from; when there is
+ * not — a refresh, a cold PWA launch, a pasted URL — it goes to the fallback
+ * instead. Pages that pass one therefore always show the control.
+ *
+ * Without a fallback the link hides itself, which is right on a screen with
+ * genuinely nowhere to go (sign-in reached from a logout redirect) but reads as
+ * a missing button anywhere else. Prefer to pass one.
  */
-export function AuthBackLink({ className = "" }: { className?: string }) {
+export function AuthBackLink({ fallback, className = "" }: { fallback?: string; className?: string }) {
   const language = useLanguageStore((state) => state.language);
-  const { canGoBack, goBack } = useHistoryBack();
+  const { canGoBack, goBack } = useHistoryBack(fallback);
 
   if (!canGoBack) return null;
 
