@@ -163,6 +163,14 @@ export async function login(body: LoginBody) {
     throw httpError("Invalid email or password", 401);
   }
 
+  // Deactivating an account only changed a field the login path never read, so
+  // a vet an admin had removed could still sign in with their old password and
+  // still held every access grant they had been given. Checked after the
+  // password so the response does not reveal which emails exist.
+  if (user.status === "inactive") {
+    throw httpError("This account has been deactivated. Please contact an administrator.", 403);
+  }
+
   const token = jwt.sign({ uid: user._id, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
 
   return {

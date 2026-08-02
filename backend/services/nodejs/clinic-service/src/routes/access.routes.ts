@@ -109,3 +109,32 @@ accessRouter.delete("/:id", async (req, res, next) => {
     next(err);
   }
 });
+
+/**
+ * POST /api/access-grants/revoke-vet/:vetUserId — revoke every grant a
+ * veterinarian holds.
+ *
+ * Called by auth-service when an admin deactivates or deletes a vet account.
+ * Without it, removing a vet took away their ability to be booked but left
+ * every existing grant standing, so the account still carried permission to
+ * read those animals' records.
+ *
+ * Soft revoke, like the owner-initiated route: revokedAt is set rather than the
+ * row deleted, so the access history stays answerable.
+ *
+ * Service-key guarded — internal cleanup, not a user action.
+ */
+accessRouter.post("/revoke-vet/:vetUserId", async (req, res, next) => {
+  try {
+    if (req.headers["x-service-key"] !== SERVICE_KEY) {
+      return res.status(403).json({ success: false, message: "Service key required" });
+    }
+    const result = await PetAccessGrantModel.updateMany(
+      { vetUserId: req.params.vetUserId, revokedAt: { $exists: false } },
+      { $set: { revokedAt: new Date().toISOString() } }
+    );
+    res.json({ success: true, data: { revoked: result.modifiedCount ?? 0 } });
+  } catch (err) {
+    next(err);
+  }
+});

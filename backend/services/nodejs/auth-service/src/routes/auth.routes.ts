@@ -14,6 +14,28 @@ function toSystemRole(role: string): "owner" | "vet" | "admin" | null {
   return null;
 }
 
+const CLINIC_SERVICE_URL = process.env.CLINIC_SERVICE_URL || "http://localhost:4003";
+
+/**
+ * Withdraw a veterinarian's access to every pet they were granted.
+ *
+ * Deactivating or deleting an account used to leave its access grants standing,
+ * so the account still carried permission to read those animals' records.
+ * Fire-and-forget: the account change itself must not fail because clinic
+ * service is briefly unreachable, and the grant registry fails closed anyway.
+ */
+async function revokeVetAccess(uid: string) {
+  try {
+    const serviceKey = process.env.SERVICE_KEY || "internal-dev-key";
+    await fetch(`${CLINIC_SERVICE_URL}/api/access-grants/revoke-vet/${encodeURIComponent(uid)}`, {
+      method: "POST",
+      headers: { "x-service-key": serviceKey },
+    });
+  } catch (err) {
+    console.warn("[auth-service] could not revoke vet access grants", err);
+  }
+}
+
 // Shape the admin roster expects. Never include passwordHash.
 function toManagedUser(user: Record<string, any>) {
   return {
@@ -132,6 +154,13 @@ authRouter.patch("/users/:uid", async (req, res) => {
   try {
     const user = await UserModel.findByIdAndUpdate(req.params.uid, update, { new: true }).lean();
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    // Deactivating a vet has to take their record access with it, or the
+    // account keeps reading patient data it can no longer be booked for.
+    if (update.status === "inactive" && user.role === "vet") {
+      await revokeVetAccess(req.params.uid);
+    }
+
     res.json({ success: true, data: toManagedUser(user) });
   } catch (err) {
     res.status(500).json({ success: false, message: (err as Error).message });
@@ -152,6 +181,7 @@ authRouter.delete("/users/:uid", async (req, res) => {
   try {
     const user = await UserModel.findByIdAndDelete(req.params.uid).lean();
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
+    if (user.role === "vet") await revokeVetAccess(req.params.uid);
     res.json({ success: true, message: "Account deleted" });
   } catch (err) {
     res.status(500).json({ success: false, message: (err as Error).message });
