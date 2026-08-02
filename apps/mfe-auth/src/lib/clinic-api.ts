@@ -1,7 +1,7 @@
 import type { Appointment, SurgeonInquiry, VetClinic } from "@companion-ai/shared-types";
 import { getAccessToken } from "./session";
+import { API_BASE_URL } from "./api-base";
 
-const API_BASE_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAccessToken();

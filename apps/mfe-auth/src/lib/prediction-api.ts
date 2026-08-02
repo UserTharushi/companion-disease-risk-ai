@@ -1,8 +1,8 @@
 import { getAccessToken } from "./session";
 import { getAppLanguage } from "./language";
 import { getOwnerId } from "./pet-api";
+import { API_BASE_URL } from "./api-base";
 
-const API_BASE_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
 
 export type PredictionVitals = {
   activityLevel: string;
