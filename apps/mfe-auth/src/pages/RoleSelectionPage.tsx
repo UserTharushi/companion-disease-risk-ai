@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { saveSelectedRole, hasStartedSession, hasCompletedOnboardingStep, markRoleStepDone } from "../lib/session";
-import { PawPrint, Stethoscope, Settings, Check, ArrowRight } from "lucide-react";
+import { PawPrint, Stethoscope, Settings, Check, ArrowRight, Info } from "lucide-react";
 import { AuthLayout } from "../components/AuthLayout";
 import { AuthBackLink } from "../components/BackButton";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
@@ -11,37 +11,33 @@ import { cn } from "../lib/utils";
 import { t, useLanguageStore } from "../lib/language";
 
 const roles = [
-  {
-    id: "pet-owner",
-    title: "Pet Owner",
-    description: "Track health records, get AI risk assessments, and find clinics",
-    icon: PawPrint,
-  },
-  {
-    id: "veterinarian",
-    title: "Veterinarian",
-    description: "Manage patients, view histories, and respond to care inquiries",
-    icon: Stethoscope,
-  },
-  {
-    id: "admin",
-    title: "Platform Admin",
-    description: "System oversight, clinic approvals, and user management",
-    icon: Settings,
-  },
+  { id: "pet-owner", titleKey: "rolePetOwnerTitle", descKey: "rolePetOwnerDesc", icon: PawPrint },
+  { id: "veterinarian", titleKey: "roleVetTitle", descKey: "roleVetDesc", icon: Stethoscope },
+  { id: "admin", titleKey: "roleAdminTitle", descKey: "roleAdminDesc", icon: Settings },
 ];
 
 export function RoleSelectionPage() {
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
+  const tr = (key: string) => t(language, key);
   const [selectedRole, setSelectedRole] = useState("pet-owner");
   if (!hasStartedSession()) return <Navigate to="/auth" replace />;
   if (!hasCompletedOnboardingStep()) return <Navigate to="/auth/onboarding" replace />;
 
+  // Veterinarians are provisioned by an administrator; the register endpoint
+  // rejects self-signup with 403. Saying so here means the choice fails on the
+  // screen that offers it, rather than three steps later on a form that has no
+  // Veterinarian option.
+  const vetBlocked = selectedRole === "veterinarian";
+
   function handleContinue() {
+    if (vetBlocked) return;
     saveSelectedRole(selectedRole);
     markRoleStepDone();
-    navigate("/auth/login");
+    // This is the last step of signing UP, so the next screen is registration.
+    // It used to go to sign-in, which made the role look like something you
+    // pick to log in as — it is not; the server decides an account's role.
+    navigate("/auth/register");
   }
 
   return (
@@ -55,18 +51,14 @@ export function RoleSelectionPage() {
         </div>
         <div className="mb-6 space-y-2">
           <div className="flex items-center justify-between text-xs text-accent-faint">
-            <span>{language === "si" ? "පියවර 3 / 3" : language === "ta" ? "படி 3 / 3" : "Step 3 of 3"}</span>
-            <span className="font-medium text-accent-muted">{language === "si" ? "අවසන් කරමින්" : language === "ta" ? "கிட்டத்தட்ட முடிந்தது" : "Almost done"}</span>
+            <span>{tr("roleStepLabel")}</span>
+            <span className="font-medium text-accent-muted">{tr("almostDone")}</span>
           </div>
           <Progress value={100} />
         </div>
 
-        <h1 className="text-xl font-semibold tracking-tight text-accent">
-          {language === "si" ? "ඔබගේ භූමිකාව තෝරන්න" : language === "ta" ? "உங்கள் பாத்திரத்தை தேர்ந்தெடுக்கவும்" : "Select your role"}
-        </h1>
-        <p className="mt-1.5 text-sm text-accent-subtle">
-          {language === "si" ? "මෙය ඔබගේ ඩැෂ්බෝඩ් සහ ලබාගත හැකි විශේෂාංග තීරණය කරයි." : language === "ta" ? "இது உங்கள் டாஷ்போர்டு மற்றும் கிடைக்கும் அம்சங்களை நிர்ணயிக்கும்." : "This determines your dashboard and available features."}
-        </p>
+        <h1 className="text-xl font-semibold tracking-tight text-accent">{tr("selectYourRole")}</h1>
+        <p className="mt-1.5 text-sm text-accent-subtle">{tr("roleChooseAccountType")}</p>
 
         <div className="mt-6 space-y-2">
           {roles.map((role) => {
@@ -90,8 +82,8 @@ export function RoleSelectionPage() {
                   <role.icon className="h-4 w-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-accent">{role.title}</p>
-                  <p className="text-xs text-accent-subtle leading-relaxed">{role.description}</p>
+                  <p className="text-sm font-medium text-accent">{tr(role.titleKey)}</p>
+                  <p className="text-xs text-accent-subtle leading-relaxed">{tr(role.descKey)}</p>
                 </div>
                 <div className={cn(
                   "flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-all",
@@ -104,15 +96,22 @@ export function RoleSelectionPage() {
           })}
         </div>
 
-        <Button size="xl" className="mt-8 w-full" onClick={handleContinue}>
-          {t(language, "continueAction")}
+        {vetBlocked && (
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-info/40 bg-info-light px-3 py-2.5 text-xs leading-relaxed text-accent-muted dark:border-info/30 dark:bg-primary/10 dark:text-neutral-300">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+            <span>{tr("vetSelfSignupBlocked")}</span>
+          </div>
+        )}
+
+        <Button size="xl" className="mt-8 w-full" onClick={handleContinue} disabled={vetBlocked}>
+          {tr("continueAction")}
           <ArrowRight className="h-4 w-4" />
         </Button>
 
         <p className="mt-4 text-center text-xs text-accent-faint">
-          {language === "si" ? "දැනටමත් ගිණුමක් තිබේද?" : language === "ta" ? "ஏற்கனவே கணக்கு உள்ளதா?" : "Already have an account?"}{" "}
+          {tr("alreadyHaveAccount")}{" "}
           <button type="button" onClick={() => navigate("/auth/login")} className="font-medium text-accent hover:underline">
-            {t(language, "signIn")}
+            {tr("signIn")}
           </button>
         </p>
       </div>
