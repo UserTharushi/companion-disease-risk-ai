@@ -2,14 +2,31 @@
 returns even when Mongo is down (history just won't record)."""
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from bson import ObjectId
 
 logger = logging.getLogger("ai-service.repo")
+
+# One submission can reach /predict twice. The agent pipeline calls it as its
+# tool, and if the pipeline then fails further along, the front end falls back
+# to calling /predict directly — by which point the first result is already
+# stored. Owners also resubmit when a page seems stuck. All of those are one
+# assessment from the owner's point of view, so an identical submission for the
+# same pet inside this window updates nothing and returns the existing record.
+_DUPLICATE_WINDOW = timedelta(minutes=2)
+
+
+def _fingerprint(payload: dict) -> str:
+    """Stable hash of a submission, so identical answers collide on purpose."""
+    return hashlib.sha1(
+        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
 
 _client = None
 
@@ -54,10 +71,24 @@ def _serialize(doc: dict) -> dict:
 
 def save(payload: dict, response: dict) -> Optional[str]:
     try:
+        fingerprint = _fingerprint(payload)
+        existing = _collection().find_one(
+            {
+                "fingerprint": fingerprint,
+                "created_at": {"$gte": datetime.now(timezone.utc) - _DUPLICATE_WINDOW},
+            },
+            sort=[("created_at", -1)],
+            projection={"_id": 1},
+        )
+        if existing is not None:
+            logger.info("Duplicate submission within window; reusing %s", existing["_id"])
+            return str(existing["_id"])
+
         doc = {
             "pet_id": payload.get("pet_id"),
             "owner_id": payload.get("owner_id"),
             "payload": payload,
+            "fingerprint": fingerprint,
             "risk_level": response.get("risk_level"),
             "risk_score": response.get("risk_score"),
             "confidence_score": response.get("confidence_score"),
