@@ -1,7 +1,7 @@
 import { getAccessToken } from "./session";
 import { getAppLanguage } from "./language";
 import { buildPredictionPayload, type DiseaseRisk, type PredictionInput, type PredictionResult } from "./prediction-api";
-import { API_BASE_URL } from "./api-base";
+import { API_BASE_URL, fetchWithTimeout } from "./api-base";
 
 
 export type AgentRecommendation = {
@@ -62,7 +62,7 @@ export async function analyzeCase(
   imageDataUrl?: string,
 ): Promise<AgentResponse> {
   const token = getAccessToken();
-  const response = await fetch(`${API_BASE_URL}/api/agent/analyze`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/api/agent/analyze`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -73,7 +73,7 @@ export async function analyzeCase(
       owner_location: ownerLocation,
       image_data_url: imageDataUrl || null,
     }),
-  });
+  }, 45_000);
 
   if (!response.ok) {
     throw new Error(`Analyze request failed (${response.status})`);

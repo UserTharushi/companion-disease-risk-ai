@@ -23,6 +23,29 @@ function isLocalhost(value: string): boolean {
   return /(^|\/\/)(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(value);
 }
 
+/**
+ * fetch with a deadline.
+ *
+ * Browser fetch has no timeout of its own, so a stalled connection — a phone
+ * dropping off Wi-Fi mid-request is the common one — leaves the caller waiting
+ * for ever and whatever spinner it set on screen with it. Use this for calls a
+ * user is actively waiting on, and let the caller's normal error path handle
+ * the rejection.
+ */
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = 30_000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const API_BASE_URL: string = (() => {
   const configured = (import.meta.env.VITE_API_GATEWAY_URL as string | undefined)?.trim();
 

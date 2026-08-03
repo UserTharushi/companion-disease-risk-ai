@@ -1060,12 +1060,26 @@ export function SymptomReportPage() {
       symptomDurationDays: durationDays,
     };
 
-    // Owner location for the Vet Discovery & Booking Agent (non-blocking, 4s cap)
+    // Owner location for the Vet Discovery & Booking Agent.
+    //
+    // The browser's own `timeout` option only starts counting once permission
+    // has been answered — while the prompt is on screen it does nothing. An
+    // owner who ignores the prompt, or a browser that refuses geolocation
+    // outright on a plain-http address (anything but localhost), left this
+    // promise unresolved and the whole page stuck on "analyzing" forever.
+    // The hard cap below settles it either way; location is optional here.
     const ownerLocation = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
       if (!navigator.geolocation) return resolve(null);
+      let settled = false;
+      const finish = (value: { lat: number; lng: number } | null) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      const giveUp = setTimeout(() => finish(null), 6000);
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => resolve(null),
+        (pos) => { clearTimeout(giveUp); finish({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+        () => { clearTimeout(giveUp); finish(null); },
         { timeout: 4000, maximumAge: 300000 }
       );
     });
@@ -1091,8 +1105,24 @@ export function SymptomReportPage() {
       }
     }
 
-    localStorage.setItem(LAST_SYMPTOM_KEY, JSON.stringify({ ...submission, result, agent, offline }));
-    setAnalyzing(false);
+    // Storing the case can fail on its own — an attached photo is held as a
+    // base64 string and can exceed the localStorage quota. That must not strand
+    // the page on "analyzing", so the spinner is cleared in a finally and the
+    // result is retried without the image before giving up on it.
+    try {
+      localStorage.setItem(LAST_SYMPTOM_KEY, JSON.stringify({ ...submission, result, agent, offline }));
+    } catch {
+      try {
+        localStorage.setItem(
+          LAST_SYMPTOM_KEY,
+          JSON.stringify({ ...submission, imageDataUrl: "", result, agent, offline }),
+        );
+      } catch {
+        // Nothing more to do; the results page falls back to an empty case.
+      }
+    } finally {
+      setAnalyzing(false);
+    }
     navigate(`/pets/prediction/${pet.id}`);
   }
 

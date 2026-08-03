@@ -1,7 +1,7 @@
 import { getAccessToken } from "./session";
 import { getAppLanguage } from "./language";
 import { getOwnerId } from "./pet-api";
-import { API_BASE_URL } from "./api-base";
+import { API_BASE_URL, fetchWithTimeout } from "./api-base";
 
 
 export type PredictionVitals = {
@@ -88,11 +88,11 @@ export function buildPredictionPayload(input: PredictionInput) {
 export async function submitPrediction(input: PredictionInput): Promise<PredictionResult> {
   const payload = buildPredictionPayload(input);
 
-  const response = await fetch(`${API_BASE_URL}/api/predict`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/api/predict`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(payload),
-  });
+  }, 30_000);
 
   if (!response.ok) {
     throw new Error(`Prediction request failed (${response.status})`);
