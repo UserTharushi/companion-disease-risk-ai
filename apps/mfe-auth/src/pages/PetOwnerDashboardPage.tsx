@@ -509,6 +509,18 @@ export function PetOwnerDashboardPage() {
     return () => window.removeEventListener("focus", refresh);
   }, []);
 
+  // While the owner is actually looking at the clinics tab, keep it current
+  // without waiting for them to click away and back. Scoped to that one tab so
+  // the rest of the app is not polling for something it never shows, and
+  // stopped when the page is hidden so a backgrounded tab costs nothing.
+  useEffect(() => {
+    if (activeTab !== "clinics") return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") setClinicRefreshKey((key) => key + 1);
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [activeTab]);
+
   useEffect(() => {
     let active = true;
     const token = getAccessToken();

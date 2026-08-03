@@ -1328,11 +1328,31 @@ export function AdminDashboardPage() {
                           <div className="mt-3 flex flex-wrap items-center gap-2">
                             <Button size="sm" onClick={saveClinicEdit} disabled={savingClinic}><Check className="h-3.5 w-3.5" />{tr("save")}</Button>
                             <Button size="sm" variant="secondary" onClick={() => setEditingClinicId(null)}><X className="h-3.5 w-3.5" />{tr("cancel")}</Button>
-                            <Button size="sm" variant="secondary" onClick={() => fillCoordsFromDevice("edit")} disabled={locatingClinic}>
+                            {/* Same address lookup as the create form — correcting a
+                                wrong position is exactly when it is needed most. */}
+                            <Button size="sm" variant="secondary" onClick={() => findCoordsFromAddress("edit")} disabled={geocodeTarget === "edit"}>
                               <MapPin className="h-3 w-3" />
-                              {locatingClinic ? tr("locating") : tr("useMyLocation")}
+                              {geocodeTarget === "edit" ? tr("locating") : tr("findFromAddress")}
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => fillCoordsFromDevice("edit")} disabled={locatingClinic}>
+                              {locatingClinic ? tr("locating") : tr("useMyLocationHere")}
                             </Button>
                           </div>
+                          {geocodeTarget === "edit" && geocodeMatches.length > 0 && (
+                            <div className="mt-2 space-y-1 rounded-lg border border-border/70 bg-surface-secondary p-2 dark:border-neutral-800 dark:bg-neutral-900/50">
+                              <p className="text-[11px] font-medium text-accent-subtle">{tr("pickCorrectPlace")}</p>
+                              {geocodeMatches.map((match) => (
+                                <button
+                                  key={`${match.latitude},${match.longitude}`}
+                                  type="button"
+                                  onClick={() => applyGeocodeMatch(match)}
+                                  className="block w-full rounded-md px-2 py-1.5 text-left text-[11px] text-accent transition hover:bg-surface-tertiary dark:text-neutral-200 dark:hover:bg-neutral-800"
+                                >
+                                  {match.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="flex flex-wrap items-start justify-between gap-3">
