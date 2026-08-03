@@ -16,10 +16,12 @@ import {
   createClinic,
   deleteClinic,
   deleteSurgeon,
+  geocodeAddress,
   listAllAppointments,
   listClinics,
   updateClinic,
   updateSurgeon,
+  type GeocodeMatch,
 } from "../lib/clinic-api";
 import { getFeedbackSummary, getModelInfo, type FeedbackSummary } from "../lib/prediction-api";
 import { sendNotification } from "../lib/notification-api";
@@ -249,6 +251,8 @@ export function AdminDashboardPage() {
   const [slotDraftBySurgeon, setSlotDraftBySurgeon] = useState<Record<string, string>>({});
   const [savingClinic, setSavingClinic] = useState(false);
   const [locatingClinic, setLocatingClinic] = useState(false);
+  const [geocodeTarget, setGeocodeTarget] = useState<"create" | "edit" | null>(null);
+  const [geocodeMatches, setGeocodeMatches] = useState<GeocodeMatch[]>([]);
 
   // ── Admin profile ──
   const [adminProfile, setAdminProfile] = useState<AdminProfile>(() => {
@@ -426,12 +430,60 @@ export function AdminDashboardPage() {
   }
 
   /**
+   * Look the coordinates up from the address that was typed.
+   *
+   * This is the right default. "Use my location" only fits an administrator
+   * standing inside the clinic they are registering; used from anywhere else it
+   * silently files the clinic at the administrator's own position, which is how
+   * a Colombo clinic came to sit in Warakapola.
+   */
+  async function findCoordsFromAddress(target: "create" | "edit") {
+    const draft = target === "create" ? clinicDraft : editingClinicDraft;
+    const query = [draft.name, draft.address].filter(Boolean).join(", ").trim();
+    if (query.length < 3) {
+      toast({ title: tr("enterAddressFirst"), variant: "error" });
+      return;
+    }
+    setGeocodeTarget(target);
+    setGeocodeMatches([]);
+    try {
+      const matches = await geocodeAddress(query);
+      if (matches.length === 0) {
+        // Business names are usually not in the map data; a town or street is.
+        const fallback = await geocodeAddress(draft.address || draft.name);
+        if (fallback.length === 0) {
+          toast({ title: tr("addressNotFound"), description: tr("addressNotFoundHint"), variant: "error" });
+          setGeocodeTarget(null);
+          return;
+        }
+        setGeocodeMatches(fallback);
+        return;
+      }
+      setGeocodeMatches(matches);
+    } catch (err) {
+      toast({ title: (err as Error).message || tr("actionFailed"), variant: "error" });
+      setGeocodeTarget(null);
+    }
+  }
+
+  function applyGeocodeMatch(match: { label: string; latitude: number; longitude: number }) {
+    const lat = match.latitude.toFixed(6);
+    const lng = match.longitude.toFixed(6);
+    if (geocodeTarget === "edit") {
+      setEditingClinicDraft((d) => ({ ...d, latitude: lat, longitude: lng }));
+    } else {
+      setClinicDraft((d) => ({ ...d, latitude: lat, longitude: lng }));
+    }
+    setGeocodeTarget(null);
+    setGeocodeMatches([]);
+    toast({ title: tr("locationCaptured"), description: `${lat}, ${lng}`, variant: "success" });
+  }
+
+  /**
    * Fill the latitude/longitude fields from the device's own position.
    *
-   * The form previously showed bare Colombo coordinates as placeholders, which
-   * were copied in verbatim - putting a Kurunegala clinic 93 km from where it
-   * actually is, and outside the nearby-search radius. A clinic administrator
-   * registering their own premises is almost always standing in them.
+   * Only correct when the administrator is physically at the clinic — the label
+   * says so. Otherwise use the address lookup above.
    */
   function fillCoordsFromDevice(target: "create" | "edit") {
     if (!navigator.geolocation) {
@@ -1211,10 +1263,32 @@ export function AdminDashboardPage() {
                         <div><Label className="text-[11px]">{tr("longitude")}</Label><input className={cn(inputClass, "mt-1")} placeholder="e.g. 80.3647" value={clinicDraft.longitude} onChange={(e) => setClinicDraft((d) => ({ ...d, longitude: e.target.value }))} /></div>
                       </div>
                       <div className="col-span-full">
-                        <Button size="sm" variant="secondary" onClick={() => fillCoordsFromDevice("create")} disabled={locatingClinic}>
-                          <MapPin className="h-3 w-3" />
-                          {locatingClinic ? tr("locating") : tr("useMyLocation")}
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          {/* Address lookup first: it is right wherever the
+                              administrator happens to be sitting. */}
+                          <Button size="sm" onClick={() => findCoordsFromAddress("create")} disabled={geocodeTarget === "create"}>
+                            <MapPin className="h-3 w-3" />
+                            {geocodeTarget === "create" ? tr("locating") : tr("findFromAddress")}
+                          </Button>
+                          <Button size="sm" variant="secondary" onClick={() => fillCoordsFromDevice("create")} disabled={locatingClinic}>
+                            {locatingClinic ? tr("locating") : tr("useMyLocationHere")}
+                          </Button>
+                        </div>
+                        {geocodeTarget === "create" && geocodeMatches.length > 0 && (
+                          <div className="mt-2 space-y-1 rounded-lg border border-border/70 bg-surface-secondary p-2 dark:border-neutral-800 dark:bg-neutral-900/50">
+                            <p className="text-[11px] font-medium text-accent-subtle">{tr("pickCorrectPlace")}</p>
+                            {geocodeMatches.map((match) => (
+                              <button
+                                key={`${match.latitude},${match.longitude}`}
+                                type="button"
+                                onClick={() => applyGeocodeMatch(match)}
+                                className="block w-full rounded-md px-2 py-1.5 text-left text-[11px] text-accent transition hover:bg-surface-tertiary dark:text-neutral-200 dark:hover:bg-neutral-800"
+                              >
+                                {match.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <p className="mt-1 text-[11px] text-accent-faint">{tr("coordsMustMatchAddress")}</p>
                       </div>
                     </div>

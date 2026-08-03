@@ -184,6 +184,72 @@ async function fetchOsmVeterinary(lat: number, lng: number, radiusKm: number): P
   }
 }
 
+/**
+ * GET /api/clinics/geocode?q=<address> — turn an address into coordinates.
+ *
+ * Coordinates were only enterable by hand or by copying the admin's own
+ * position, so a clinic in Colombo added by someone sitting in Warakapola was
+ * placed in Warakapola. An address is the thing an administrator actually
+ * knows, so look the position up from that instead.
+ *
+ * Uses Nominatim, the OpenStreetMap search service - free, no key, same family
+ * as the Overpass lookup already used for nearby clinics. Several matches are
+ * returned rather than one, because "PetVet Clinic" is not unique and silently
+ * picking the first is how the original mistake happened.
+ *
+ * Must stay registered before /:clinicId.
+ */
+const geocodeCache = new Map<string, { at: number; data: unknown[] }>();
+const GEOCODE_CACHE_MS = 60 * 60 * 1000;
+
+clinicRouter.get("/geocode", requireStaff, async (req, res, next) => {
+  try {
+    const query = String(req.query.q ?? "").trim();
+    if (query.length < 3) {
+      return res.status(400).json({ success: false, message: "Enter an address to search" });
+    }
+
+    const key = query.toLowerCase();
+    const cached = geocodeCache.get(key);
+    if (cached && Date.now() - cached.at < GEOCODE_CACHE_MS) {
+      return res.json({ success: true, data: cached.data });
+    }
+
+    const url =
+      "https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=lk&q=" +
+      encodeURIComponent(query);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    let results: unknown[] = [];
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          // Nominatim's usage policy requires an identifying User-Agent.
+          "User-Agent": "CompanionDiseaseRiskAI/1.0 (academic FYP; clinic geocoding)",
+          "Accept-Language": "en",
+        },
+      });
+      if (response.ok) {
+        const body = (await response.json()) as Array<Record<string, unknown>>;
+        results = body.map((row) => ({
+          label: String(row.display_name ?? ""),
+          latitude: Number(row.lat),
+          longitude: Number(row.lon),
+        }));
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+
+    geocodeCache.set(key, { at: Date.now(), data: results });
+    res.json({ success: true, data: results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/clinics/nearby?lat=&lng=&maxKm=50 — must stay registered before /:clinicId
 clinicRouter.get("/nearby", async (req, res, next) => {
   try {

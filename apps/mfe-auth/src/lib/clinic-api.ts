@@ -59,6 +59,19 @@ export type ClinicWritePayload = {
   isOpen?: boolean;
 };
 
+export type GeocodeMatch = { label: string; latitude: number; longitude: number };
+
+/**
+ * Look up coordinates for a typed address.
+ *
+ * Returns several candidates rather than one: place names are rarely unique,
+ * and silently taking the first match is how a Colombo clinic ended up plotted
+ * at the administrator's own location.
+ */
+export async function geocodeAddress(query: string): Promise<GeocodeMatch[]> {
+  return request<GeocodeMatch[]>(`/api/clinics/geocode?q=${encodeURIComponent(query)}`);
+}
+
 export async function createClinic(payload: ClinicWritePayload): Promise<{ id: string }> {
   return request<{ id: string }>(`/api/clinics`, { method: "POST", body: JSON.stringify(payload) });
 }
