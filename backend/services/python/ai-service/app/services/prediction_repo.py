@@ -69,6 +69,34 @@ def _serialize(doc: dict) -> dict:
     return doc
 
 
+def soft_delete(prediction_id: str, owner_id: str, is_admin: bool = False) -> str:
+    """Remove an assessment from the owner's history.
+
+    Marks the document rather than dropping it. The owner sees it gone, which
+    is all they asked for, but the record still backs feedback_summary() — the
+    AI-vs-vet agreement is computed by joining what the model predicted against
+    what the vet later confirmed, and a removed row would take that evidence
+    with it. It also keeps this consistent with access grants, which are
+    revoked by stamping a date rather than deleting.
+
+    Returns "deleted", "not_found" or "forbidden".
+    """
+    try:
+        doc = _collection().find_one({"_id": ObjectId(prediction_id)}, {"owner_id": 1})
+    except Exception:
+        return "not_found"
+    if doc is None:
+        return "not_found"
+    if not is_admin and str(doc.get("owner_id") or "") != owner_id:
+        return "forbidden"
+
+    _collection().update_one(
+        {"_id": ObjectId(prediction_id)},
+        {"$set": {"deleted_at": datetime.now(timezone.utc)}},
+    )
+    return "deleted"
+
+
 def save(payload: dict, response: dict) -> Optional[str]:
     try:
         fingerprint = _fingerprint(payload)
@@ -108,7 +136,9 @@ def save(payload: dict, response: dict) -> Optional[str]:
 
 def history(pet_id: Optional[str] = None, owner_id: Optional[str] = None, limit: int = 20) -> list[dict]:
     try:
-        query: dict = {}
+        # Removed assessments stay in the collection for feedback_summary()
+        # but must not come back in anyone's history.
+        query: dict = {"deleted_at": {"$exists": False}}
         if pet_id:
             query["pet_id"] = pet_id
         if owner_id:
@@ -122,7 +152,9 @@ def history(pet_id: Optional[str] = None, owner_id: Optional[str] = None, limit:
 
 def get(prediction_id: str) -> Optional[dict]:
     try:
-        doc = _collection().find_one({"_id": ObjectId(prediction_id)})
+        doc = _collection().find_one(
+            {"_id": ObjectId(prediction_id), "deleted_at": {"$exists": False}}
+        )
         return _serialize(doc) if doc else None
     except Exception as ex:
         logger.warning("Could not read prediction %s: %s", prediction_id, ex)

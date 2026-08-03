@@ -34,7 +34,7 @@ import {
   type BackendPet,
 } from "../lib/pet-api";
 import { cancelAppointment, createAppointment, listAppointments, listClinics, listNearbyClinics, updateAppointment, listInquiries, createInquiry, sendInquiryMessage, type NearbyClinic } from "../lib/clinic-api";
-import { getPredictionHistory, type PredictionHistoryItem } from "../lib/prediction-api";
+import { getPredictionHistory, deletePrediction, type PredictionHistoryItem } from "../lib/prediction-api";
 import { listUpcomingVaccinations } from "../lib/vaccination-api";
 import { listAnnouncements, type Announcement } from "../lib/admin-api";
 import { sendChatMessage } from "../lib/agent-api";
@@ -278,6 +278,8 @@ export function PetOwnerDashboardPage() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [pets, setPets] = useState<PetRecord[]>(() => removeLegacySeedPets(loadJson<PetRecord[]>(petsStorageKey, [])));
   const [predictions, setPredictions] = useState<PredictionDisplay[]>([]);
+  const [deletingAssessment, setDeletingAssessment] = useState<PredictionDisplay | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const language = useLanguageStore((state) => state.language);
   const tr = (key: string) => t(language, key);
 
@@ -823,6 +825,22 @@ export function PetOwnerDashboardPage() {
    * Owner adds a turn to an existing thread — usually answering the clarifying
    * question a vet's reply ends with. Rejected once the thread hits its cap.
    */
+  async function handleDeleteAssessment() {
+    const target = deletingAssessment;
+    if (!target) return;
+    setDeletingId(target.id);
+    try {
+      await deletePrediction(target.id);
+      setPredictions((prev) => prev.filter((p) => p.id !== target.id));
+      setDeletingAssessment(null);
+      toast({ title: tr("assessmentRemoved"), variant: "success" });
+    } catch (err) {
+      toast({ title: (err as Error).message || tr("actionFailed"), variant: "error" });
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   async function handleSendFollowUp(inquiryId: string) {
     const body = (followUpByInquiry[inquiryId] || "").trim();
     if (!body) return;
@@ -1135,12 +1153,12 @@ export function PetOwnerDashboardPage() {
                         variant="ghost"
                         disabled={deletingPetId === editingPetId}
                         onClick={async () => {
-                          if (!confirm("Delete this pet profile?")) return;
+                          if (!confirm(tr("deletePetConfirm"))) return;
                           const success = await handleDeletePet(editingPetId);
                           if (success) navigate("/pets?tab=pets");
                         }}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />Delete
+                        <Trash2 className="h-3.5 w-3.5" />{tr("delete")}
                       </Button>
                     ) : null}
                     <Button size="sm" variant="secondary" onClick={() => navigate("/pets?tab=pets")}>{tr("cancel")}</Button>
@@ -1415,7 +1433,16 @@ export function PetOwnerDashboardPage() {
                           <p className="mt-2.5 text-[12px] leading-relaxed text-accent-subtle">
                             <span className="font-medium text-accent-muted">{tr("recommendationLabel")}</span> {item.recommendation}
                           </p>
-                          <div className="mt-3 flex justify-end">
+                          <div className="mt-3 flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setDeletingAssessment(item)}
+                              disabled={deletingId === item.id}
+                              aria-label={tr("deleteAssessment")}
+                            >
+                              <Trash2 className="h-3 w-3" /> {tr("delete")}
+                            </Button>
                             <Button
                               size="sm"
                               variant="secondary"
@@ -1881,6 +1908,27 @@ export function PetOwnerDashboardPage() {
           <div className="mt-4 flex gap-2">
             <Button className="flex-1" onClick={confirmPendingBooking}>{tr("confirmBooking")}</Button>
             <Button className="flex-1" variant="secondary" onClick={() => setPendingBooking(null)}>{tr("cancel")}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deleting is the owner's call, but it should never happen on a stray
+          tap - and the copy says plainly what it does and does not affect. */}
+      <Dialog open={Boolean(deletingAssessment)} onOpenChange={(open) => { if (!open) setDeletingAssessment(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tr("deleteAssessment")}</DialogTitle>
+            <DialogDescription>{tr("deleteAssessmentBody")}</DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDeletingAssessment(null)}>{tr("cancel")}</Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700"
+              onClick={handleDeleteAssessment}
+              disabled={deletingId === deletingAssessment?.id}
+            >
+              {tr("delete")}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

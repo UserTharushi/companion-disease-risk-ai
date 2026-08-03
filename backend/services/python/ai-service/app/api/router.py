@@ -110,6 +110,30 @@ def prediction_detail(
     return {"success": True, "data": _relocalize(doc, language)}
 
 
+@router.delete("/predictions/{prediction_id}")
+def prediction_delete(
+    prediction_id: str,
+    x_user_id: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+):
+    """Owner removes one of their own assessments from their history.
+
+    Veterinarians cannot: an assessment they were shown is part of the animal's
+    clinical record, and removing it is the owner's decision about their own
+    list, not a clinician's about someone else's.
+    """
+    uid, role = _caller(x_user_id, x_user_role)
+    if role == "vet":
+        raise HTTPException(status_code=403, detail="Veterinarians cannot remove assessments")
+
+    outcome = prediction_repo.soft_delete(prediction_id, uid, is_admin=role == "admin")
+    if outcome == "not_found":
+        raise HTTPException(status_code=404, detail="Prediction not found")
+    if outcome == "forbidden":
+        raise HTTPException(status_code=403, detail="You can only remove your own assessments")
+    return {"success": True, "message": "Assessment removed"}
+
+
 @router.post("/predictions/{prediction_id}/feedback")
 def prediction_feedback(prediction_id: str, body: FeedbackRequest, ownerId: Optional[str] = Query(default=None)):
     ok = prediction_repo.set_feedback(

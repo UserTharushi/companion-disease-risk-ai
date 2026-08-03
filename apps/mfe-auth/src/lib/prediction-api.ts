@@ -151,6 +151,22 @@ export async function getPrediction(id: string): Promise<StoredPrediction> {
   return body.data;
 }
 
+/**
+ * Remove an assessment from the owner's history.
+ *
+ * The service marks it rather than dropping the row, so it disappears from
+ * every list while the AI-vs-vet evaluation data behind it survives.
+ */
+export async function deletePrediction(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/predictions/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Could not remove assessment (${response.status})`);
+  }
+}
+
 // --- Feedback / diagnosis loop -------------------------------------------
 // Owner tells us whether a prediction was useful and (once seen by a vet)
 // whether it matched the real diagnosis; the vet records the confirmed
