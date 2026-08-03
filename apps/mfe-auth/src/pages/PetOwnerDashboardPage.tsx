@@ -396,6 +396,11 @@ export function PetOwnerDashboardPage() {
   const [sendingFollowUpId, setSendingFollowUpId] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number; accuracyKm?: number } | null>(null);
   const [externalClinics, setExternalClinics] = useState<NearbyClinic[]>([]);
+  // Clinics are created by an administrator, often while an owner already has
+  // this page open. The list was loaded once on mount, so a new clinic never
+  // reached the directory or the map until a full reload. Bumping this key
+  // re-runs the load.
+  const [clinicRefreshKey, setClinicRefreshKey] = useState(0);
 
   // Real-world discovery: OpenStreetMap veterinary POIs near the user (display-only)
   useEffect(() => {
@@ -488,7 +493,22 @@ export function PetOwnerDashboardPage() {
     return () => {
       active = false;
     };
-  }, [ownerId, appointmentsStorageKey]);
+  }, [ownerId, appointmentsStorageKey, clinicRefreshKey]);
+
+  // Refresh when the owner opens the clinics tab, and when the window regains
+  // focus — that second one covers the common case of an administrator adding
+  // a clinic in another tab or window while this page sits open.
+  useEffect(() => {
+    if (activeTab !== "clinics") return;
+    setClinicRefreshKey((key) => key + 1);
+  }, [activeTab]);
+
+  useEffect(() => {
+    const refresh = () => setClinicRefreshKey((key) => key + 1);
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
+
   useEffect(() => {
     let active = true;
     const token = getAccessToken();
