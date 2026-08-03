@@ -104,10 +104,40 @@ clinicRouter.get("/", async (req, res, next) => {
   }
 });
 
+/**
+ * Resolve an address to coordinates, best match only.
+ *
+ * Used when a clinic is saved without coordinates, so that supplying the
+ * address is enough. Falls back to the address alone when the full
+ * "name, address" string finds nothing — business names are usually absent
+ * from map data while streets and towns are present.
+ */
+async function geocodeBest(name: string, address: string): Promise<{ lat: number; lng: number } | null> {
+  for (const query of [[name, address].filter(Boolean).join(", "), address].filter((q) => q && q.trim().length >= 3)) {
+    const matches = await nominatimSearch(query);
+    if (matches.length > 0) return { lat: matches[0].latitude, lng: matches[0].longitude };
+  }
+  return null;
+}
+
 clinicRouter.post("/", requireStaff, async (req, res, next) => {
   try {
-    const clinic = await ClinicModel.create(req.body);
-    res.status(201).json({ success: true, data: { id: clinic._id.toString(), ...req.body } });
+    const body = { ...req.body };
+
+    // The address is what an administrator actually knows, so it decides the
+    // position unless coordinates were given deliberately. Without this the
+    // fields could stay empty, or keep whatever the device last filled in,
+    // which put a Ratmalana clinic at the administrator's own desk.
+    if (!Number.isFinite(Number(body.latitude)) || !Number.isFinite(Number(body.longitude))) {
+      const resolved = await geocodeBest(String(body.name ?? ""), String(body.address ?? ""));
+      if (resolved) {
+        body.latitude = resolved.lat;
+        body.longitude = resolved.lng;
+      }
+    }
+
+    const clinic = await ClinicModel.create(body);
+    res.status(201).json({ success: true, data: { id: clinic._id.toString(), ...body } });
   } catch (err) {
     next(err);
   }
@@ -199,8 +229,52 @@ async function fetchOsmVeterinary(lat: number, lng: number, radiusKm: number): P
  *
  * Must stay registered before /:clinicId.
  */
-const geocodeCache = new Map<string, { at: number; data: unknown[] }>();
+type GeocodeMatch = { label: string; latitude: number; longitude: number };
+
+const geocodeCache = new Map<string, { at: number; data: GeocodeMatch[] }>();
 const GEOCODE_CACHE_MS = 60 * 60 * 1000;
+
+/** Ask Nominatim for places matching a free-text query. Never throws. */
+async function nominatimSearch(query: string): Promise<GeocodeMatch[]> {
+  const key = query.trim().toLowerCase();
+  if (key.length < 3) return [];
+
+  const cached = geocodeCache.get(key);
+  if (cached && Date.now() - cached.at < GEOCODE_CACHE_MS) return cached.data;
+
+  const url =
+    "https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=lk&q=" +
+    encodeURIComponent(query);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  let results: GeocodeMatch[] = [];
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        // Nominatim's usage policy requires an identifying User-Agent.
+        "User-Agent": "CompanionDiseaseRiskAI/1.0 (academic FYP; clinic geocoding)",
+        "Accept-Language": "en",
+      },
+    });
+    if (response.ok) {
+      const body = (await response.json()) as Array<Record<string, unknown>>;
+      results = body.map((row) => ({
+        label: String(row.display_name ?? ""),
+        latitude: Number(row.lat),
+        longitude: Number(row.lon),
+      }));
+    }
+  } catch (err) {
+    console.warn("[clinic-service] geocode lookup failed", err);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  geocodeCache.set(key, { at: Date.now(), data: results });
+  return results;
+}
 
 clinicRouter.get("/geocode", requireStaff, async (req, res, next) => {
   try {
@@ -208,43 +282,7 @@ clinicRouter.get("/geocode", requireStaff, async (req, res, next) => {
     if (query.length < 3) {
       return res.status(400).json({ success: false, message: "Enter an address to search" });
     }
-
-    const key = query.toLowerCase();
-    const cached = geocodeCache.get(key);
-    if (cached && Date.now() - cached.at < GEOCODE_CACHE_MS) {
-      return res.json({ success: true, data: cached.data });
-    }
-
-    const url =
-      "https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=lk&q=" +
-      encodeURIComponent(query);
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
-    let results: unknown[] = [];
-    try {
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          // Nominatim's usage policy requires an identifying User-Agent.
-          "User-Agent": "CompanionDiseaseRiskAI/1.0 (academic FYP; clinic geocoding)",
-          "Accept-Language": "en",
-        },
-      });
-      if (response.ok) {
-        const body = (await response.json()) as Array<Record<string, unknown>>;
-        results = body.map((row) => ({
-          label: String(row.display_name ?? ""),
-          latitude: Number(row.lat),
-          longitude: Number(row.lon),
-        }));
-      }
-    } finally {
-      clearTimeout(timer);
-    }
-
-    geocodeCache.set(key, { at: Date.now(), data: results });
-    res.json({ success: true, data: results });
+    res.json({ success: true, data: await nominatimSearch(query) });
   } catch (err) {
     next(err);
   }
@@ -331,7 +369,25 @@ clinicRouter.get("/:clinicId", async (req, res, next) => {
 
 clinicRouter.patch("/:clinicId", requireStaff, async (req, res, next) => {
   try {
-    const clinic = await ClinicModel.findByIdAndUpdate(req.params.clinicId, req.body, { new: true }).lean();
+    const body = { ...req.body };
+
+    // Correcting an address should move the clinic. Only re-resolve when the
+    // address changed and no explicit coordinates came with the edit, so an
+    // administrator who deliberately set a position keeps it.
+    const addressChanged = typeof body.address === "string" && body.address.trim().length >= 3;
+    const coordsGiven = Number.isFinite(Number(body.latitude)) && Number.isFinite(Number(body.longitude));
+    if (addressChanged && !coordsGiven) {
+      const existing = await ClinicModel.findById(req.params.clinicId).lean();
+      if (existing && existing.address !== body.address) {
+        const resolved = await geocodeBest(String(body.name ?? existing.name ?? ""), String(body.address));
+        if (resolved) {
+          body.latitude = resolved.lat;
+          body.longitude = resolved.lng;
+        }
+      }
+    }
+
+    const clinic = await ClinicModel.findByIdAndUpdate(req.params.clinicId, body, { new: true }).lean();
     if (!clinic) return res.status(404).json({ success: false, message: "Clinic not found" });
     res.json({ success: true, data: clinic });
   } catch (err) {
